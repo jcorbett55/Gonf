@@ -125,7 +125,7 @@ This ticket was reviewed by BA, Dev Lead, and QA. Clarifications were completed 
 
 ```json
 {
-  "code": 500,
+  "code": 400,
   "success": false,
   "errors": [
     {
@@ -137,7 +137,7 @@ This ticket was reviewed by BA, Dev Lead, and QA. Clarifications were completed 
 }
 ```
 
-- Expected handled error classes in this sprint: 500, 404, 502.
+- Expected handled error classes in this sprint: 400, 404, 413, 500, 502.
 - If contract shape changes across multiple tickets, create a dedicated architecture note and link it here.
 
 ## QA Notes and Test Intent
@@ -151,9 +151,10 @@ This ticket was reviewed by BA, Dev Lead, and QA. Clarifications were completed 
 ## Traceability
 
 - Parent Ticket: GONF-001
+- Branch: feature/GONF-001-thin-vertical-sprint
 - Related Commits:
-  1. [to be added]
-  2. [to be added]
+  1. 1cb5f70 - GONF-001: harden upload validation and malformed response handling
+  2. [pending current status-code fix commit]
 - Related PR/Code Review:
   1. [to be added]
   2. [to be added]
@@ -202,5 +203,5 @@ This ticket was reviewed by BA, Dev Lead, and QA. Clarifications were completed 
 
 - Current Status: In Review
 - Owner: Dev Lead
-- Last Updated: 2026-07-08
+- Last Updated: 2026-07-09
 - Branch Naming Target: feature/GONF-001-thin-vertical-sprint

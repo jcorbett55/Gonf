@@ -103,7 +103,7 @@ static async Task<IResult> HandleSchemaPreviewRequestAsync(HttpRequest request, 
 
         if (document is null)
         {
-            return CreateErrorResult("INVALID_JSON", "Uploaded file is not valid JSON.");
+            return CreateErrorResult(StatusCodes.Status400BadRequest, "INVALID_JSON", "Uploaded file is not valid JSON.");
         }
 
         var schema = JsonSchemaPreviewService.Build(document.RootElement);
@@ -112,7 +112,7 @@ static async Task<IResult> HandleSchemaPreviewRequestAsync(HttpRequest request, 
     catch (Exception ex)
     {
         logger.LogError(ex, "Failed to generate schema preview.");
-        return CreateErrorResult("SERVER_ERROR", "We hit an unexpected problem while generating the schema preview.");
+        return CreateErrorResult(StatusCodes.Status500InternalServerError, "SERVER_ERROR", "We hit an unexpected problem while generating the schema preview.");
     }
 }
 
@@ -120,22 +120,22 @@ static IResult? ValidateFile(IFormFile? file)
 {
     if (file is null)
     {
-        return CreateErrorResult("FILE_REQUIRED", "Please choose a JSON file to continue.");
+        return CreateErrorResult(StatusCodes.Status400BadRequest, "FILE_REQUIRED", "Please choose a JSON file to continue.");
     }
 
     if (file.Length == 0)
     {
-        return CreateErrorResult("EMPTY_FILE", "The uploaded file is empty. Please upload a valid JSON file.");
+        return CreateErrorResult(StatusCodes.Status400BadRequest, "EMPTY_FILE", "The uploaded file is empty. Please upload a valid JSON file.");
     }
 
     if (!file.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
     {
-        return CreateErrorResult("INVALID_FILE_TYPE", "Only .json files are supported.");
+        return CreateErrorResult(StatusCodes.Status400BadRequest, "INVALID_FILE_TYPE", "Only .json files are supported.");
     }
 
     if (file.Length > MaxUploadBytes)
     {
-        return CreateErrorResult("PAYLOAD_TOO_LARGE", "The uploaded file exceeds the 1 MB limit.");
+        return CreateErrorResult(StatusCodes.Status413PayloadTooLarge, "PAYLOAD_TOO_LARGE", "The uploaded file exceeds the 1 MB limit.");
     }
 
     return null;
@@ -154,8 +154,7 @@ static async Task<JsonDocument?> TryParseJsonAsync(Stream stream, string fileNam
     }
 }
 
-static IResult CreateErrorResult(string code, string message)
+static IResult CreateErrorResult(int statusCode, string code, string message)
 {
-    const int StatusCode = StatusCodes.Status500InternalServerError;
-    return Results.Json(ApiResponse.CreateError(StatusCode, code, message), statusCode: StatusCode);
+    return Results.Json(ApiResponse.CreateError(statusCode, code, message), statusCode: statusCode);
 }
