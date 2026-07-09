@@ -424,11 +424,41 @@ th {
   cursor: pointer;
   box-shadow: 0 8px 24px -18px #19334f;
   z-index: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .gg-room-card.is-selected {
   border-color: #22577a;
   box-shadow: 0 0 0 2px rgba(34, 87, 122, 0.2);
+}
+
+.gg-room-vertical-exit {
+  position: absolute;
+  width: 1.35rem;
+  height: 1.35rem;
+  border: 1px solid #b7c9ea;
+  border-radius: 999px;
+  background: #e8f2ff;
+  color: #146a8d;
+  font-weight: 800;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.gg-room-exit-up {
+  top: -0.55rem;
+  right: -0.4rem;
+}
+
+.gg-room-exit-down {
+  bottom: -0.55rem;
+  right: -0.4rem;
 }
 
 .gg-room-popover {

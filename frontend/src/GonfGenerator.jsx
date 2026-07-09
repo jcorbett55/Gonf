@@ -367,6 +367,25 @@ export default function GonfGenerator() {
     setStatusMessage(`Loaded room ${room.roomName} into the form.`)
   }
 
+  const onJumpToVerticalExit = (event, room, direction) => {
+    event.stopPropagation()
+
+    const targetId = room.exits[direction]
+    if (!targetId) {
+      return
+    }
+
+    const targetRoom = roomsById.get(targetId)
+    if (!targetRoom) {
+      setStatusMessage(`Could not follow ${direction} exit because the referenced room was not found.`)
+      return
+    }
+
+    setActiveFloor(targetRoom.roomFloor)
+    onSelectRoom(targetRoom)
+    setStatusMessage(`Moved to Floor ${targetRoom.roomFloor} via ${direction} exit.`)
+  }
+
   const onSaveRoom = () => {
     if (!gonfName.trim()) {
       setStatusMessage('Gonf Name is required before saving rooms.')
@@ -724,15 +743,36 @@ export default function GonfGenerator() {
               </svg>
 
               {positionedFloorRooms.map((room) => (
-                <button
+                <div
                   key={room.roomId}
-                  type="button"
                   className={`gg-room-card ${selectedRoomId === room.roomId ? 'is-selected' : ''}`}
                   style={{ gridColumn: room.x + 1, gridRow: room.y + 1 }}
                   onClick={() => onSelectRoom(room)}
                 >
                   <span>{room.roomName}</span>
-                </button>
+                  {room.exits.up && (
+                    <button
+                      type="button"
+                      className="gg-room-vertical-exit gg-room-exit-up"
+                      aria-label={`Go up to ${roomNameById(roomsById, room.exits.up)}`}
+                      title={`Up to ${roomNameById(roomsById, room.exits.up)}`}
+                      onClick={(event) => onJumpToVerticalExit(event, room, 'up')}
+                    >
+                      ↑
+                    </button>
+                  )}
+                  {room.exits.down && (
+                    <button
+                      type="button"
+                      className="gg-room-vertical-exit gg-room-exit-down"
+                      aria-label={`Go down to ${roomNameById(roomsById, room.exits.down)}`}
+                      title={`Down to ${roomNameById(roomsById, room.exits.down)}`}
+                      onClick={(event) => onJumpToVerticalExit(event, room, 'down')}
+                    >
+                      ↓
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
 
