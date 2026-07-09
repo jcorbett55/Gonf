@@ -227,6 +227,61 @@ th {
   gap: 0.75rem;
 }
 
+.gg-exit-compass {
+  grid-column: 1 / -1;
+  border: 1px dashed var(--edge);
+  border-radius: 12px;
+  background: #fffdf8;
+  padding: 0.85rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.45rem 0.8rem;
+  align-items: start;
+}
+
+.gg-exit-compass h3 {
+  grid-column: 1 / -1;
+  margin: 0 0 0.2rem;
+  font-size: 1rem;
+}
+
+.gg-exit-up,
+.gg-exit-north,
+.gg-exit-south,
+.gg-exit-down {
+  grid-column: 2;
+}
+
+.gg-exit-west {
+  grid-column: 1;
+}
+
+.gg-exit-east {
+  grid-column: 3;
+}
+
+.gg-compass-arrow {
+  color: #52657a;
+  justify-self: center;
+  font-weight: 700;
+}
+
+.gg-compass-up,
+.gg-compass-ns,
+.gg-compass-south,
+.gg-compass-down,
+.gg-compass-ew {
+  grid-column: 2;
+}
+
+.gg-compass-up {
+  margin-top: -0.15rem;
+}
+
+.gg-compass-ew {
+  align-self: center;
+}
+
 .gg-field {
   display: grid;
   gap: 0.35rem;
@@ -403,6 +458,28 @@ th {
   .gg-map-layout,
   .gg-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .gg-exit-compass {
+    grid-template-columns: 1fr;
+  }
+
+  .gg-exit-up,
+  .gg-exit-north,
+  .gg-exit-west,
+  .gg-exit-east,
+  .gg-exit-south,
+  .gg-exit-down,
+  .gg-compass-up,
+  .gg-compass-ns,
+  .gg-compass-south,
+  .gg-compass-down,
+  .gg-compass-ew {
+    grid-column: 1;
+  }
+
+  .gg-compass-arrow {
+    justify-self: start;
   }
 
   .gg-wide {

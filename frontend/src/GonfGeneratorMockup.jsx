@@ -159,10 +159,7 @@ export default function GonfGeneratorMockup() {
         </div>
 
         <div className="gg-form-grid">
-          <label className="gg-field">
-            <span>Room ID</span>
-            <input type="text" value="Auto on Save" disabled />
-          </label>
+          <input type="hidden" name="roomId" value="" />
 
           <label className="gg-field">
             <span>Room Name</span>
@@ -186,79 +183,103 @@ export default function GonfGeneratorMockup() {
             </select>
           </label>
 
-          <label className="gg-field">
-            <span>North Exit</span>
-            <select>
-              <option value="">None</option>
-              {horizontalExitOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <section className="gg-exit-compass" aria-label="Compass Exits">
+            <h3>Exits (Compass Layout)</h3>
 
-          <label className="gg-field">
-            <span>East Exit</span>
-            <select>
-              <option value="">None</option>
-              {horizontalExitOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+            <label className="gg-field gg-exit-up">
+              <span>Up Exit</span>
+              <select disabled={selectedFloor === ''}>
+                <option value="">{selectedFloor === '' ? 'Select floor first' : 'None'}</option>
+                {upExitOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <small>Target floor: {upTargetFloor ?? '-'}</small>
+            </label>
 
-          <label className="gg-field">
-            <span>South Exit</span>
-            <select>
-              <option value="">None</option>
-              {horizontalExitOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+            <span className="gg-compass-arrow gg-compass-up" aria-hidden="true">
+              ^
+            </span>
 
-          <label className="gg-field">
-            <span>West Exit</span>
-            <select>
-              <option value="">None</option>
-              {horizontalExitOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+            <label className="gg-field gg-exit-north">
+              <span>North Exit</span>
+              <select>
+                <option value="">None</option>
+                {horizontalExitOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <label className="gg-field">
-            <span>Up Exit</span>
-            <select disabled={selectedFloor === ''}>
-              <option value="">{selectedFloor === '' ? 'Select floor first' : 'None'}</option>
-              {upExitOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <small>Target floor: {upTargetFloor ?? '-'}</small>
-          </label>
+            <span className="gg-compass-arrow gg-compass-ns" aria-hidden="true">
+              ^
+            </span>
 
-          <label className="gg-field">
-            <span>Down Exit</span>
-            <select disabled={selectedFloor === ''}>
-              <option value="">{selectedFloor === '' ? 'Select floor first' : 'None'}</option>
-              {downExitOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <small>Target floor: {downTargetFloor ?? '-'}</small>
-          </label>
+            <label className="gg-field gg-exit-west">
+              <span>West Exit</span>
+              <select>
+                <option value="">None</option>
+                {horizontalExitOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <span className="gg-compass-arrow gg-compass-ew" aria-hidden="true">
+              &lt; &gt;
+            </span>
+
+            <label className="gg-field gg-exit-east">
+              <span>East Exit</span>
+              <select>
+                <option value="">None</option>
+                {horizontalExitOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <span className="gg-compass-arrow gg-compass-south" aria-hidden="true">
+              v
+            </span>
+
+            <label className="gg-field gg-exit-south">
+              <span>South Exit</span>
+              <select>
+                <option value="">None</option>
+                {horizontalExitOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <span className="gg-compass-arrow gg-compass-down" aria-hidden="true">
+              v
+            </span>
+
+            <label className="gg-field gg-exit-down">
+              <span>Down Exit</span>
+              <select disabled={selectedFloor === ''}>
+                <option value="">{selectedFloor === '' ? 'Select floor first' : 'None'}</option>
+                {downExitOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <small>Target floor: {downTargetFloor ?? '-'}</small>
+            </label>
+          </section>
         </div>
 
         <div className="gg-button-row">
