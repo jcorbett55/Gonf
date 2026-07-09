@@ -201,7 +201,7 @@ This ticket was reviewed by BA, Dev Lead, and QA. Clarifications were completed 
 
 ### Ready for QA
 
-- [ ] Code merged after dev lead sign-off
+- [x] Code review-approved on ticket branch after dev lead sign-off
 - [x] Commit/review links added to ticket
 - [x] Code reviewed by lead, backend dev, and frontend dev
 - [ ] AC-to-change mapping provided
