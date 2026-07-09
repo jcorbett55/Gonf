@@ -89,6 +89,11 @@ static async Task<IResult> HandleSchemaPreviewRequestAsync(HttpRequest request, 
 {
     try
     {
+        if (!request.HasFormContentType)
+        {
+            return CreateErrorResult(StatusCodes.Status400BadRequest, "FILE_REQUIRED", "Please choose a JSON file to continue.");
+        }
+
         var form = await request.ReadFormAsync();
         var file = form.Files.GetFile("file");
 
@@ -158,3 +163,5 @@ static IResult CreateErrorResult(int statusCode, string code, string message)
 {
     return Results.Json(ApiResponse.CreateError(statusCode, code, message), statusCode: statusCode);
 }
+
+public partial class Program;

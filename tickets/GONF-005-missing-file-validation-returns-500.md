@@ -61,9 +61,13 @@ Response should return:
 - Parent Ticket: GONF-001
 - Discovered In: QA Cycle 2 (2026-07-09)
 - Branch Target: feature/GONF-005-missing-file-validation
+- Related Commits:
+  1. [pending push] GONF-005 fix + endpoint integration tests
+- Developer Test Evidence:
+  1. `dotnet test Gonf.slnx --nologo` -> PASS (9 passed, 0 failed)
 
 ## Status
 
-- Current Status: Draft
-- Owner: Backend Developer
+- Current Status: In Review
+- Owner: Dev Lead
 - Last Updated: 2026-07-09
