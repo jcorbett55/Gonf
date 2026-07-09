@@ -62,7 +62,7 @@ Response should return:
 - Discovered In: QA Cycle 2 (2026-07-09)
 - Branch Target: feature/GONF-005-missing-file-validation
 - Related Commits:
-  1. [pending push] GONF-005 fix + endpoint integration tests
+  1. 895e15f - GONF-005: fix missing-file 500 and add endpoint integration tests
 - Developer Test Evidence:
   1. `dotnet test Gonf.slnx --nologo` -> PASS (9 passed, 0 failed)
 
