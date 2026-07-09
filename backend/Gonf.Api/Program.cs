@@ -2,6 +2,8 @@ using Gonf.Api.Models;
 using Gonf.Api.Services;
 using System.Text.Json;
 
+const long MaxUploadBytes = 1 * 1024 * 1024;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
@@ -129,6 +131,11 @@ static IResult? ValidateFile(IFormFile? file)
     if (!file.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
     {
         return CreateErrorResult("INVALID_FILE_TYPE", "Only .json files are supported.");
+    }
+
+    if (file.Length > MaxUploadBytes)
+    {
+        return CreateErrorResult("PAYLOAD_TOO_LARGE", "The uploaded file exceeds the 1 MB limit.");
     }
 
     return null;

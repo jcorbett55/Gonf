@@ -9,6 +9,19 @@ const statusMessages = {
   502: 'The service is temporarily unavailable (502). Please try again shortly.',
 }
 
+const malformedResponseError = {
+  code: 'MALFORMED_RESPONSE',
+  message: 'The service returned an unexpected response format. Please try again.',
+}
+
+function normalizeErrors(payload) {
+  return Array.isArray(payload?.errors) ? payload.errors : []
+}
+
+function normalizeSchema(payload) {
+  return Array.isArray(payload?.schema) ? payload.schema : null
+}
+
 function App() {
   const [selectedFile, setSelectedFile] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -65,7 +78,7 @@ function App() {
       })
 
       const payload = await response.json().catch(() => null)
-      const normalizedErrors = payload?.errors ?? []
+      const normalizedErrors = normalizeErrors(payload)
 
       setLastCode(payload?.code ?? response.status)
 
@@ -83,7 +96,14 @@ function App() {
         return
       }
 
-      setSchemaNodes(payload.schema ?? [])
+      const normalizedSchema = normalizeSchema(payload)
+      if (normalizedSchema === null) {
+        setErrors([malformedResponseError])
+        setSchemaNodes([])
+        return
+      }
+
+      setSchemaNodes(normalizedSchema)
     } catch {
       setErrors([
         {

@@ -106,6 +106,26 @@ public class JsonSchemaPreviewServiceTests
                 Assert.Contains(nodes, n => n.Path == "tags" && n.IsArray && !n.IsObject && n.InferredType == "string");
         }
 
+        [Fact]
+        public void Build_UsesNullFallbackForAllNullArrays()
+        {
+                var root = ParseRoot(
+                        """
+                        {
+                          "createdAt": [null, null],
+                          "totalAmount": [null],
+                          "userId": [null]
+                        }
+                        """
+                );
+
+                var nodes = JsonSchemaPreviewService.Build(root);
+
+                Assert.Contains(nodes, n => n.Path == "createdAt" && n.IsArray && n.InferredType == "date");
+                Assert.Contains(nodes, n => n.Path == "totalAmount" && n.IsArray && n.InferredType == "decimal");
+                Assert.Contains(nodes, n => n.Path == "userId" && n.IsArray && n.InferredType == "number");
+        }
+
         private static JsonElement ParseRoot(string json)
         {
                 using var document = JsonDocument.Parse(json);

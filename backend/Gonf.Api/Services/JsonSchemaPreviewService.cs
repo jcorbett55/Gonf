@@ -63,7 +63,7 @@ public static class JsonSchemaPreviewService
 
         if (firstMeaningful.ValueKind == JsonValueKind.Undefined)
         {
-            nodes.Add(new SchemaNode(path, fieldName, StringType, true, false));
+            nodes.Add(new SchemaNode(path, fieldName, InferNullType(fieldName), true, false));
             return;
         }
 
