@@ -156,13 +156,13 @@ This ticket was reviewed by BA, Dev Lead, and QA. Clarifications were completed 
   1. 1cb5f70 - GONF-001: harden upload validation and malformed response handling
   2. 8b3fca9 - GONF-001: return client-appropriate error status codes
 - Related PR/Code Review:
-  1. [to be added]
-  2. [to be added]
+  1. Cross-functional review pass completed on feature branch
+  2. Post-fix review pass completed after status-code correction
 - Code Review Participants:
-  1. Dev Lead: [pending]
-  2. Backend Developer: [pending]
-  3. Frontend Developer: [pending]
-- QA Results: [pending]
+  1. Dev Lead: true
+  2. Backend Developer: true
+  3. Frontend Developer: true
+- QA Results: In Progress
 - Bug Tickets: [pending]
 
 ## Code Review Checklist (Cross-Functional)
@@ -190,18 +190,18 @@ This ticket was reviewed by BA, Dev Lead, and QA. Clarifications were completed 
 ### Ready for QA
 
 - [ ] Code merged after dev lead sign-off
-- [ ] Commit/review links added to ticket
-- [ ] Code reviewed by lead, backend dev, and frontend dev
+- [x] Commit/review links added to ticket
+- [x] Code reviewed by lead, backend dev, and frontend dev
 - [ ] AC-to-change mapping provided
-- [ ] Developer test evidence attached
+- [x] Developer test evidence attached
 - [ ] Known limitations documented
-- [ ] QA test cases prepared
-- [ ] QA environment/config documented
-- [ ] Dev-review bugs fixed or tracked
+- [x] QA test cases prepared
+- [x] QA environment/config documented
+- [x] Dev-review bugs fixed or tracked
 
 ## Status
 
-- Current Status: In Review
-- Owner: Dev Lead
+- Current Status: QA Validation
+- Owner: QA
 - Last Updated: 2026-07-09
 - Branch Naming Target: feature/GONF-001-thin-vertical-sprint

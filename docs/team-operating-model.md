@@ -13,6 +13,11 @@ Define how business objectives become tickets, code, tests, and promotion decisi
 - Frontend Developer: Implements frontend/UI ticket work, provides UI mockups for business review, and drives overall UI look and feel.
 - QA: Defines and executes test coverage, determines promotion to UAT, and creates bug tickets when needed.
 
+Integration-testing ownership model:
+- QA owns integration test planning, coverage definition, and pass/fail decisioning.
+- Backend and frontend developers own implementation support for test harnesses and stable test hooks.
+- Dev lead approves required integration coverage for cross-service or API contract changes.
+
 ## Ticket Source of Truth
 
 - The ticket is the primary source of truth for implementation and testing.
@@ -90,6 +95,7 @@ A change is ready for QA only if all checks pass:
 7. QA test cases are prepared from the approved ticket.
 8. Environment/config required for QA is provided.
 9. Bugs found during dev review are fixed or tracked.
+10. Integration/contract regression checks are defined for impacted dependencies.
 
 ## Frontend Standards
 
