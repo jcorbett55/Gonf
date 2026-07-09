@@ -1,6 +1,16 @@
 import { useMemo, useState } from 'react'
 
 const floors = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5]
+const planarDirections = ['north', 'east', 'south', 'west']
+const allDirections = ['north', 'east', 'south', 'west', 'up', 'down']
+const oppositeDirection = {
+  north: 'south',
+  east: 'west',
+  south: 'north',
+  west: 'east',
+  up: 'down',
+  down: 'up',
+}
 
 function createEmptyForm() {
   return {
@@ -50,19 +60,20 @@ function roomNameById(roomsById, roomId) {
   return roomsById.get(roomId)?.roomName ?? `Room ${roomId}`
 }
 
-function buildFloorConnections(floorRooms, roomsById) {
+function buildFloorConnections(floorRooms) {
   const lineKeys = new Set()
   const lines = []
+  const floorRoomMap = new Map(floorRooms.map((room) => [room.roomId, room]))
 
   for (const room of floorRooms) {
-    for (const direction of ['north', 'east', 'south', 'west']) {
+    for (const direction of planarDirections) {
       const targetId = room.exits[direction]
       if (!targetId) {
         continue
       }
 
-      const targetRoom = roomsById.get(targetId)
-      if (!targetRoom || targetRoom.roomFloor !== room.roomFloor) {
+      const targetRoom = floorRoomMap.get(targetId)
+      if (!targetRoom) {
         continue
       }
 
@@ -82,33 +93,154 @@ function buildFloorConnections(floorRooms, roomsById) {
   return lines
 }
 
-function getRoomCenter(room) {
-  const gridColumns = 5
-  const gridRows = 4
-
+function getRoomCenter(room, gridColumns, gridRows) {
   return {
     x: ((room.x + 0.5) / gridColumns) * 100,
     y: ((room.y + 0.5) / gridRows) * 100,
   }
 }
 
-function computeNextCoordinates(rooms, roomFloor) {
-  const onFloor = rooms.filter((room) => room.roomFloor === roomFloor)
-  const slot = onFloor.length
-  return {
-    x: slot % 5,
-    y: Math.floor(slot / 5) % 4,
+function findNearestOpenSlot(occupied, startX, startY) {
+  const startKey = `${startX},${startY}`
+  if (!occupied.has(startKey)) {
+    return { x: startX, y: startY }
   }
+
+  for (let radius = 1; radius <= 20; radius += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      for (let dy = -radius; dy <= radius; dy += 1) {
+        const x = startX + dx
+        const y = startY + dy
+        const key = `${x},${y}`
+        if (!occupied.has(key)) {
+          return { x, y }
+        }
+      }
+    }
+  }
+
+  return { x: startX, y: startY }
 }
 
-function mapRoomForState(rawRoom, indexOnFloor) {
+function buildDirectionalFloorLayout(floorRooms) {
+  if (floorRooms.length === 0) {
+    return []
+  }
+
+  const directionOffset = {
+    north: { x: 0, y: -1 },
+    east: { x: 1, y: 0 },
+    south: { x: 0, y: 1 },
+    west: { x: -1, y: 0 },
+  }
+
+  const roomById = new Map(floorRooms.map((room) => [room.roomId, room]))
+  const sortedRooms = [...floorRooms].sort((a, b) => a.roomId - b.roomId)
+  const placed = new Map()
+  const occupied = new Set()
+  let componentStartX = 0
+
+  for (const seed of sortedRooms) {
+    if (placed.has(seed.roomId)) {
+      continue
+    }
+
+    const queue = [{ roomId: seed.roomId, x: componentStartX, y: 0 }]
+
+    while (queue.length > 0) {
+      const next = queue.shift()
+      if (!next || placed.has(next.roomId)) {
+        continue
+      }
+
+      const room = roomById.get(next.roomId)
+      if (!room) {
+        continue
+      }
+
+      const slot = findNearestOpenSlot(occupied, next.x, next.y)
+      const key = `${slot.x},${slot.y}`
+      occupied.add(key)
+      placed.set(room.roomId, slot)
+
+      for (const direction of planarDirections) {
+        const targetId = room.exits[direction]
+        if (!targetId || placed.has(targetId) || !roomById.has(targetId)) {
+          continue
+        }
+
+        const delta = directionOffset[direction]
+        queue.push({ roomId: targetId, x: slot.x + delta.x, y: slot.y + delta.y })
+      }
+    }
+
+    componentStartX += 6
+  }
+
+  const placedValues = Array.from(placed.values())
+  const minX = Math.min(...placedValues.map((point) => point.x))
+  const minY = Math.min(...placedValues.map((point) => point.y))
+
+  return sortedRooms.map((room, index) => {
+    const fallback = { x: index % 5, y: Math.floor(index / 5) }
+    const position = placed.get(room.roomId) ?? fallback
+    return {
+      ...room,
+      x: position.x - minX,
+      y: position.y - minY,
+    }
+  })
+}
+
+function applyReciprocalLinks(rooms, savedRoom) {
+  const nextRooms = rooms.map((room) => ({ ...room, exits: { ...room.exits } }))
+  const savedRoomCopy = { ...savedRoom, exits: { ...savedRoom.exits } }
+  const existingIndex = nextRooms.findIndex((room) => room.roomId === savedRoomCopy.roomId)
+
+  if (existingIndex >= 0) {
+    nextRooms[existingIndex] = savedRoomCopy
+  } else {
+    nextRooms.push(savedRoomCopy)
+  }
+
+  // Remove stale links pointing to this room before reapplying the current save state.
+  for (const room of nextRooms) {
+    if (room.roomId === savedRoomCopy.roomId) {
+      continue
+    }
+
+    for (const direction of allDirections) {
+      if (room.exits[direction] === savedRoomCopy.roomId) {
+        room.exits[direction] = null
+      }
+    }
+  }
+
+  // Tie both sides of each selected exit direction during save.
+  for (const direction of allDirections) {
+    const targetId = savedRoomCopy.exits[direction]
+    if (!targetId) {
+      continue
+    }
+
+    const targetRoom = nextRooms.find((room) => room.roomId === targetId)
+    if (!targetRoom) {
+      continue
+    }
+
+    const reverseDirection = oppositeDirection[direction]
+    targetRoom.exits[reverseDirection] = savedRoomCopy.roomId
+  }
+
+  return nextRooms
+}
+
+function mapRoomForState(rawRoom) {
   return {
     roomId: Number(rawRoom.roomId),
     roomName: String(rawRoom.roomName ?? ''),
     roomDescription: String(rawRoom.roomDescription ?? ''),
     roomFloor: Number(rawRoom.roomFloor),
-    x: Number.isInteger(rawRoom.x) ? rawRoom.x : indexOnFloor % 5,
-    y: Number.isInteger(rawRoom.y) ? rawRoom.y : Math.floor(indexOnFloor / 5) % 4,
     exits: {
       north: toNullableNumber(rawRoom.exits?.north ?? rawRoom.northExit),
       east: toNullableNumber(rawRoom.exits?.east ?? rawRoom.eastExit),
@@ -125,7 +257,6 @@ function parseLoadedGonf(payload) {
     throw new Error('File is missing a valid rooms array.')
   }
 
-  const floorCounts = new Map()
   const rooms = payload.rooms
     .map((rawRoom) => {
       const roomFloor = Number(rawRoom.roomFloor)
@@ -133,10 +264,9 @@ function parseLoadedGonf(payload) {
         return null
       }
 
-      const count = floorCounts.get(roomFloor) ?? 0
-      floorCounts.set(roomFloor, count + 1)
 
-      return mapRoomForState(rawRoom, count)
+
+      return mapRoomForState(rawRoom)
     })
     .filter(Boolean)
 
@@ -164,10 +294,19 @@ export default function GonfGenerator() {
   }, [rooms])
 
   const floorRooms = useMemo(() => rooms.filter((room) => room.roomFloor === activeFloor), [rooms, activeFloor])
+  const positionedFloorRooms = useMemo(() => buildDirectionalFloorLayout(floorRooms), [floorRooms])
   const selectedFloorNumber = form.roomFloor === '' ? null : Number(form.roomFloor)
   const upTargetFloor = getTargetFloor(selectedFloorNumber, 'up')
   const downTargetFloor = getTargetFloor(selectedFloorNumber, 'down')
-  const floorConnections = useMemo(() => buildFloorConnections(floorRooms, roomsById), [floorRooms, roomsById])
+  const floorConnections = useMemo(() => buildFloorConnections(positionedFloorRooms), [positionedFloorRooms])
+  const gridColumns = useMemo(
+    () => Math.max(5, ...positionedFloorRooms.map((room) => room.x + 1), 1),
+    [positionedFloorRooms],
+  )
+  const gridRows = useMemo(
+    () => Math.max(4, ...positionedFloorRooms.map((room) => room.y + 1), 1),
+    [positionedFloorRooms],
+  )
 
   const horizontalExitOptions = rooms
     .filter((room) => room.roomFloor === selectedFloorNumber && room.roomId !== toNullableNumber(form.roomId))
@@ -248,19 +387,12 @@ export default function GonfGenerator() {
 
     setRooms((currentRooms) => {
       const nextRoomId = editingRoomId ?? (Math.max(0, ...currentRooms.map((room) => room.roomId)) + 1)
-      const existing = currentRooms.find((room) => room.roomId === nextRoomId)
-
-      const coords = existing && existing.roomFloor === roomFloor
-        ? { x: existing.x, y: existing.y }
-        : computeNextCoordinates(currentRooms.filter((room) => room.roomId !== nextRoomId), roomFloor)
 
       const savedRoom = {
         roomId: nextRoomId,
         roomName: form.roomName.trim(),
         roomDescription: form.roomDescription.trim(),
         roomFloor,
-        x: coords.x,
-        y: coords.y,
         exits: {
           north: toNullableNumber(form.northExit),
           east: toNullableNumber(form.eastExit),
@@ -271,9 +403,7 @@ export default function GonfGenerator() {
         },
       }
 
-      const nextRooms = existing
-        ? currentRooms.map((room) => (room.roomId === nextRoomId ? savedRoom : room))
-        : [...currentRooms, savedRoom]
+      const nextRooms = applyReciprocalLinks(currentRooms, savedRoom)
 
       setSelectedRoomId(nextRoomId)
       setActiveFloor(roomFloor)
@@ -512,15 +642,23 @@ export default function GonfGenerator() {
           ))}
         </div>
 
-        {floorRooms.length === 0 ? (
+        {positionedFloorRooms.length === 0 ? (
           <p className="muted">Map is empty for Floor {activeFloor}. Save a room or load an existing Gonf.</p>
         ) : (
           <div className="gg-map-layout">
-            <div className="gg-map-canvas" role="application" aria-label="Room map canvas">
+            <div
+              className="gg-map-canvas"
+              role="application"
+              aria-label="Room map canvas"
+              style={{
+                gridTemplateColumns: `repeat(${gridColumns}, minmax(70px, 1fr))`,
+                gridTemplateRows: `repeat(${gridRows}, minmax(70px, auto))`,
+              }}
+            >
               <svg className="gg-map-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
                 {floorConnections.map((line, index) => {
-                  const from = getRoomCenter(line.from)
-                  const to = getRoomCenter(line.to)
+                  const from = getRoomCenter(line.from, gridColumns, gridRows)
+                  const to = getRoomCenter(line.to, gridColumns, gridRows)
                   return (
                     <line
                       key={`${line.from.roomId}-${line.to.roomId}-${index}`}
@@ -533,7 +671,7 @@ export default function GonfGenerator() {
                 })}
               </svg>
 
-              {floorRooms.map((room) => (
+              {positionedFloorRooms.map((room) => (
                 <button
                   key={room.roomId}
                   type="button"
