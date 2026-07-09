@@ -111,7 +111,7 @@ So that I can understand and edit room navigation structure quickly.
 
 ## Status
 
-- Current Status: Draft
+- Current Status: In Progress (Dev)
 - Owner: Frontend Developer
 - Last Updated: 2026-07-09
 - Branch Naming Target: feature/GONF-006C-ui-gonf-generator

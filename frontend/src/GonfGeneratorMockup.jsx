@@ -227,7 +227,7 @@ export default function GonfGeneratorMockup() {
           </label>
 
           <section className="gg-exit-compass" aria-label="Compass Exits">
-            <h3>Exits (Compass Layout)</h3>
+            <h3>Exits</h3>
 
             <label className="gg-field gg-exit-up">
               <span>Up Exit</span>
