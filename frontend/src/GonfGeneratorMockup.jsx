@@ -188,10 +188,6 @@ export default function GonfGeneratorMockup() {
 
       <section className="panel gg-workflow">
         <div className="gg-top-actions">
-          <label className="gg-field">
-            <span>Gonf Name</span>
-            <input type="text" placeholder="Bobs_awesome_gonf" defaultValue="Bobs_awesome_gonf" />
-          </label>
           <div className="gg-action-group" aria-label="Gonf Load/Create Actions">
             <button type="button">Create New Gonf</button>
             <label className="gg-load-button">
@@ -199,6 +195,10 @@ export default function GonfGeneratorMockup() {
               <input type="file" accept=".json,application/json" />
             </label>
           </div>
+          <label className="gg-field gg-gonf-name">
+            <span>Gonf Name</span>
+            <input type="text" placeholder="Bobs_awesome_gonf" defaultValue="Bobs_awesome_gonf" />
+          </label>
         </div>
 
         <div className="gg-form-grid">

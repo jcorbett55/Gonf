@@ -176,15 +176,19 @@ th {
 }
 
 .gg-top-actions {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
+  flex-direction: column;
   gap: 0.9rem;
-  align-items: end;
+  align-items: flex-start;
 }
 
 .gg-action-group {
   display: flex;
   gap: 0.6rem;
+}
+
+.gg-gonf-name {
+  width: min(100%, 420px);
 }
 
 .gg-action-group button,
