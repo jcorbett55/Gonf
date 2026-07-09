@@ -1,0 +1,157 @@
+.app-shell {
+  width: min(1100px, 96vw);
+  margin: 2rem auto;
+  display: grid;
+  gap: 1rem;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 14px;
+  padding: 1.25rem;
+  box-shadow: 0 20px 60px -48px rgba(15, 30, 45, 0.8);
+}
+
+.intro-panel h1 {
+  margin: 0.3rem 0 0.7rem;
+  font-size: clamp(1.6rem, 2.8vw, 2.4rem);
+  letter-spacing: -0.04rem;
+}
+
+.intro-panel p {
+  margin: 0;
+  max-width: 65ch;
+}
+
+.eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.75rem;
+  color: var(--highlight);
+}
+
+.workflow-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.upload-form {
+  display: grid;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.upload-form label {
+  font-weight: 650;
+}
+
+.upload-form input[type='file'] {
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 0.55rem;
+  background: #fffaf0;
+}
+
+.upload-form button {
+  justify-self: start;
+  border: 0;
+  border-radius: 999px;
+  background: var(--highlight);
+  color: #fff;
+  padding: 0.55rem 1.2rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.upload-form button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.status {
+  margin: 0;
+  font-weight: 600;
+}
+
+.status-info {
+  color: #22577a;
+}
+
+.status-error {
+  color: #8e2a2a;
+}
+
+.code-pill {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  color: #4f5d75;
+}
+
+.error-box,
+.preview-box {
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  padding: 0.9rem;
+  background: #ffffff;
+}
+
+.error-box h2,
+.preview-box h2 {
+  margin: 0 0 0.65rem;
+  font-size: 1.1rem;
+}
+
+.error-box ul {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.94rem;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--edge);
+  text-align: left;
+  padding: 0.5rem;
+}
+
+th {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #3f4e63;
+}
+
+.muted {
+  margin: 0;
+  color: #667085;
+}
+
+@media (max-width: 700px) {
+  .app-shell {
+    margin: 0.7rem auto;
+  }
+
+  .panel {
+    padding: 0.95rem;
+    border-radius: 10px;
+  }
+
+  th,
+  td {
+    min-width: 110px;
+  }
+}

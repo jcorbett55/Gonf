@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/backend/">
+    <Project Path="backend/Gonf.Api.Tests/Gonf.Api.Tests.csproj" />
+    <Project Path="backend/Gonf.Api/Gonf.Api.csproj" />
+  </Folder>
+</Solution>

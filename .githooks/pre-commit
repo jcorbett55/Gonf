@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+echo "[pre-commit] Enforcing unit-test gate..."
+
+if ! find backend -name "*Tests.csproj" -print -quit | grep -q .; then
+  echo "[pre-commit] ERROR: No backend test project found (expected *Tests.csproj under backend/)."
+  echo "[pre-commit] Add unit tests before committing."
+  exit 1
+fi
+
+if [ ! -f "frontend/package.json" ]; then
+  echo "[pre-commit] ERROR: frontend/package.json not found."
+  exit 1
+fi
+
+if ! node -e "const p=require('./frontend/package.json'); process.exit((p.scripts && p.scripts.test) ? 0 : 1);"; then
+  echo "[pre-commit] ERROR: frontend package.json is missing a test script."
+  echo "[pre-commit] Add frontend unit tests before committing."
+  exit 1
+fi
+
+echo "[pre-commit] Running backend tests..."
+dotnet test Gonf.slnx --nologo
+
+echo "[pre-commit] Running frontend tests..."
+if command -v npm >/dev/null 2>&1; then
+  npm --prefix frontend run test -- --run
+elif command -v npm.cmd >/dev/null 2>&1; then
+  npm.cmd --prefix frontend run test -- --run
+else
+  echo "[pre-commit] ERROR: npm is not available on PATH."
+  exit 1
+fi
+
+echo "[pre-commit] Unit-test gate passed."
