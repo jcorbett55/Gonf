@@ -9,7 +9,7 @@ Deliver backend behavior for Gonf Generator so users can load, validate, save, a
 1. Save requires Gonf Name and valid room data.
 2. Room ID is system-managed and assigned on save when creating new rooms.
 3. Room Name must be unique within a Gonf.
-4. Exits must reference valid room IDs.
+4. Exits (north, east, south, west, up, down) must reference valid room IDs.
 5. Saving a room must maintain bidirectional connection consistency.
 6. Invalid uploads or invalid Gonf payloads must return actionable errors.
 

@@ -54,10 +54,9 @@ So that implementation can proceed without requirement ambiguity.
 
 ## Open Questions
 
-1. Intake form includes north/south/west exits but map behavior references north/east/west/south. Should east exit exist on the form?
-2. Down-exit rule says floor `+ 1`; should down instead be floor `- 1`?
-3. Save destination: should `[gonf-name].json` be stored server-side, offered as browser download, or both?
-4. What defines a valid "Gonf JSON" signature/schema for load validation?
+1. Down-exit rule says floor `+ 1`; should down instead be floor `- 1`?
+2. Save destination: should `[gonf-name].json` be stored server-side, offered as browser download, or both?
+3. What defines a valid "Gonf JSON" signature/schema for load validation?
 
 ## Decision Log
 
@@ -66,6 +65,11 @@ So that implementation can proceed without requirement ambiguity.
   - Owner: Business Owner
   - Decision Date: 2026-07-09
   - Notes: Negative values represent subground floors.
+
+2. East exit is required on the room form and in room-linking behavior.
+  - Owner: Business Owner
+  - Decision Date: 2026-07-09
+  - Notes: Horizontal directions are north, east, south, and west.
 
 ## Architecture Notes
 

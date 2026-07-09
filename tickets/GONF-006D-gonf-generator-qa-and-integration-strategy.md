@@ -73,6 +73,7 @@ So that new builds do not break existing behavior or room-graph consistency.
 1. Verify graph consistency invariants after each save/edit.
 2. Verify error-to-guidance messaging quality.
 3. Verify no regression in existing Gonf upload/schema preview flow.
+4. Verify east/west linkage behavior is symmetric and rendered correctly.
 
 ## Traceability
 
