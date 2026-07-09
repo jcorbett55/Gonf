@@ -106,7 +106,7 @@ So that my Gonf can be edited over time without broken navigation links.
   2. GONF-006C
   3. GONF-006D
 - Related Commits: [pending]
-- Related PR/Code Review: [pending]
+- Related PR/Code Review: In Progress (Official review started 2026-07-09)
 - QA Results: [pending]
 - Bug Tickets: [pending]
 

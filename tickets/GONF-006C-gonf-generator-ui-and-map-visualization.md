@@ -105,7 +105,7 @@ So that I can understand and edit room navigation structure quickly.
   2. GONF-006B
   3. GONF-006D
 - Related Commits: [pending]
-- Related PR/Code Review: [pending]
+- Related PR/Code Review: In Progress (Official review started 2026-07-09)
 - QA Results: [pending]
 - Bug Tickets: [pending]
 
