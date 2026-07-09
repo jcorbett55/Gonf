@@ -79,6 +79,27 @@ So that new builds do not break existing behavior or room-graph consistency.
 6. Verify save path behavior uses C:\Gonf, including folder auto-create when missing.
 7. Verify invalid signature/version payloads return correct machine error codes and user guidance.
 
+## QA Execution Checklist (Live)
+
+Execution Date: 2026-07-09
+
+1. [x] Automated: Frontend tests pass (`npm.cmd run test:run`)
+2. [x] Automated: Backend integration tests pass (`dotnet test backend/Gonf.Api.Tests/Gonf.Api.Tests.csproj`)
+3. [x] Environment: Local API and frontend are running for manual QA
+4. [ ] Manual: Open `Gonf Generator` section from main app navigation
+5. [ ] Manual: Click `Create New Gonf` and verify form reset/start state
+6. [ ] Manual: Add room details (name, description, floor, exits) and verify field behavior
+7. [ ] Manual: Verify floor tabs filter map and room popup details update on click
+8. [ ] Manual: Verify connector lines render between connected rooms on same floor
+9. [ ] Manual: Verify `Save Room` and `Clear` behavior messaging and outcomes
+10. [ ] Manual: Load a valid Gonf JSON and verify state population
+11. [ ] Manual: Negative test invalid file type and invalid Gonf payload handling
+12. [ ] Regression: Confirm schema preview workflow still works
+
+## QA Defect Log (Live)
+
+1. [pending] No defects logged yet.
+
 ## Traceability
 
 - Parent Ticket: GONF-006
@@ -88,7 +109,7 @@ So that new builds do not break existing behavior or room-graph consistency.
   3. GONF-006C
 - Related Commits: [pending]
 - Related PR/Code Review: [pending]
-- QA Results: [pending]
+- QA Results: In Progress (see live checklist above)
 - Bug Tickets: [pending]
 
 ## Status
