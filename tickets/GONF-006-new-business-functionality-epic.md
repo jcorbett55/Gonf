@@ -55,10 +55,14 @@ New business functionality has been requested and approved to precede remaining 
 - Related Tickets:
   1. GONF-002 (Paused)
   2. GONF-003 (Paused)
+  3. GONF-006A
+  4. GONF-006B
+  5. GONF-006C
+  6. GONF-006D
 
 ## Status
 
-- Current Status: Draft (BA Intake)
+- Current Status: In Progress (BA Discovery)
 - Owner: Business Analyst
 - Last Updated: 2026-07-09
 - Branch Naming Target: feature/GONF-006-epic-intake
