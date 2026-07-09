@@ -90,6 +90,48 @@ function roomNameById(roomsById, roomId) {
   return roomsById.get(roomId)?.roomName ?? `Room ${roomId}`
 }
 
+function buildFloorConnections(floorRooms, roomsById) {
+  const lineKeys = new Set()
+  const lines = []
+
+  for (const room of floorRooms) {
+    for (const direction of ['north', 'east', 'south', 'west']) {
+      const targetId = room.exits[direction]
+      if (!targetId) {
+        continue
+      }
+
+      const targetRoom = roomsById.get(targetId)
+      if (!targetRoom || targetRoom.roomFloor !== room.roomFloor) {
+        continue
+      }
+
+      const low = Math.min(room.roomId, targetRoom.roomId)
+      const high = Math.max(room.roomId, targetRoom.roomId)
+      const key = `${low}-${high}`
+
+      if (lineKeys.has(key)) {
+        continue
+      }
+
+      lineKeys.add(key)
+      lines.push({ from: room, to: targetRoom })
+    }
+  }
+
+  return lines
+}
+
+function getRoomCenter(room) {
+  const gridColumns = 5
+  const gridRows = 4
+
+  return {
+    x: ((room.x + 0.5) / gridColumns) * 100,
+    y: ((room.y + 0.5) / gridRows) * 100,
+  }
+}
+
 export default function GonfGeneratorMockup() {
   const [activeFloor, setActiveFloor] = useState(1)
   const [selectedFloor, setSelectedFloor] = useState('')
@@ -131,6 +173,7 @@ export default function GonfGeneratorMockup() {
           .map((room) => ({ value: room.roomId, label: room.roomName }))
 
   const selectedRoom = roomsById.get(selectedRoomId) ?? floorRooms[0] ?? null
+  const floorConnections = useMemo(() => buildFloorConnections(floorRooms, roomsById), [floorRooms, roomsById])
 
   return (
     <main className="app-shell">
@@ -199,8 +242,8 @@ export default function GonfGeneratorMockup() {
               <small>Target floor: {upTargetFloor ?? '-'}</small>
             </label>
 
-            <span className="gg-compass-arrow gg-compass-up" aria-hidden="true">
-              ^
+            <span className="gg-compass-icon gg-compass-up" aria-hidden="true">
+              ↑
             </span>
 
             <label className="gg-field gg-exit-north">
@@ -215,8 +258,8 @@ export default function GonfGeneratorMockup() {
               </select>
             </label>
 
-            <span className="gg-compass-arrow gg-compass-ns" aria-hidden="true">
-              ^
+            <span className="gg-compass-icon gg-compass-ns" aria-hidden="true">
+              ↑
             </span>
 
             <label className="gg-field gg-exit-west">
@@ -231,8 +274,8 @@ export default function GonfGeneratorMockup() {
               </select>
             </label>
 
-            <span className="gg-compass-arrow gg-compass-ew" aria-hidden="true">
-              &lt; &gt;
+            <span className="gg-compass-icon gg-compass-ew" aria-hidden="true">
+              ↔
             </span>
 
             <label className="gg-field gg-exit-east">
@@ -247,8 +290,8 @@ export default function GonfGeneratorMockup() {
               </select>
             </label>
 
-            <span className="gg-compass-arrow gg-compass-south" aria-hidden="true">
-              v
+            <span className="gg-compass-icon gg-compass-south" aria-hidden="true">
+              ↓
             </span>
 
             <label className="gg-field gg-exit-south">
@@ -263,8 +306,8 @@ export default function GonfGeneratorMockup() {
               </select>
             </label>
 
-            <span className="gg-compass-arrow gg-compass-down" aria-hidden="true">
-              v
+            <span className="gg-compass-icon gg-compass-down" aria-hidden="true">
+              ↓
             </span>
 
             <label className="gg-field gg-exit-down">
@@ -314,6 +357,22 @@ export default function GonfGeneratorMockup() {
         ) : (
           <div className="gg-map-layout">
             <div className="gg-map-canvas" role="application" aria-label="Room map canvas">
+              <svg className="gg-map-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                {floorConnections.map((line, index) => {
+                  const from = getRoomCenter(line.from)
+                  const to = getRoomCenter(line.to)
+                  return (
+                    <line
+                      key={`${line.from.roomId}-${line.to.roomId}-${index}`}
+                      x1={from.x}
+                      y1={from.y}
+                      x2={to.x}
+                      y2={to.y}
+                    />
+                  )
+                })}
+              </svg>
+
               {floorRooms.map((room) => (
                 <button
                   key={room.roomId}
@@ -325,34 +384,6 @@ export default function GonfGeneratorMockup() {
                   <span>{room.roomName}</span>
                 </button>
               ))}
-
-              {floorRooms.map((room) => {
-                const north = roomsById.get(room.exits.north)
-                const east = roomsById.get(room.exits.east)
-
-                return (
-                  <div key={`lines-${room.roomId}`}>
-                    {north && north.roomFloor === room.roomFloor && (
-                      <span
-                        className="gg-link gg-link-north"
-                        style={{
-                          gridColumn: room.x + 1,
-                          gridRow: room.y + 1,
-                        }}
-                      />
-                    )}
-                    {east && east.roomFloor === room.roomFloor && (
-                      <span
-                        className="gg-link gg-link-east"
-                        style={{
-                          gridColumn: room.x + 1,
-                          gridRow: room.y + 1,
-                        }}
-                      />
-                    )}
-                  </div>
-                )
-              })}
             </div>
 
             {selectedRoom && (
