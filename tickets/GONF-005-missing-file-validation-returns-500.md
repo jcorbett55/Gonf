@@ -56,6 +56,15 @@ Response should return:
 - Source: GONF-001 QA Cycle 2
 - Blocks QA pass for GONF-001 until fixed and retested.
 
+## QA Retest
+
+### Cycle 3 - 2026-07-09
+
+1. Backend regression + integration tests: PASS (`dotnet test Gonf.slnx --nologo`, 9 passed, 0 failed)
+2. Missing-file behavior validation is covered by endpoint integration tests and now returns 400 with `FILE_REQUIRED`.
+3. Existing valid/invalid/empty/oversize scenarios remain passing.
+4. QA Decision: PASS
+
 ## Traceability
 
 - Parent Ticket: GONF-001
@@ -68,6 +77,6 @@ Response should return:
 
 ## Status
 
-- Current Status: In Review
-- Owner: Dev Lead
+- Current Status: Closed
+- Owner: QA
 - Last Updated: 2026-07-09
