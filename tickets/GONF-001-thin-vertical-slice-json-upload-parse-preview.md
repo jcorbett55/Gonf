@@ -160,6 +160,18 @@ This ticket was reviewed by BA, Dev Lead, and QA. Clarifications were completed 
   - Existing dependency warning remains for `Microsoft.OpenApi` (NU1903).
   - Endpoint-level integration tests for status/contract regression are not yet implemented and are tracked in GONF-004.
 
+### Cycle 2 - 2026-07-09
+
+1. API manual validation checks executed:
+  - valid JSON upload -> PASS (200)
+  - invalid JSON upload -> PASS (400 / INVALID_JSON)
+  - zero-byte JSON upload -> PASS (400 / EMPTY_FILE)
+  - invalid file extension upload -> PASS (400 / INVALID_FILE_TYPE)
+  - oversized payload upload -> PASS (413 / PAYLOAD_TOO_LARGE)
+  - missing file in request -> FAIL (actual 500 / SERVER_ERROR)
+2. Defects opened in this cycle: 1
+3. Blocking defects: 1 (see GONF-005)
+
 ## Traceability
 
 - Parent Ticket: GONF-001
@@ -174,8 +186,9 @@ This ticket was reviewed by BA, Dev Lead, and QA. Clarifications were completed 
   1. Dev Lead: true
   2. Backend Developer: true
   3. Frontend Developer: true
-- QA Results: In Progress (Cycle 1 complete, no blocking defects)
-- Bug Tickets: [pending]
+- QA Results: In Progress (Cycle 2 found blocking defect)
+- Bug Tickets:
+  1. GONF-005 - Missing file request returns SERVER_ERROR (500) instead of FILE_REQUIRED (400)
 
 ## Code Review Checklist (Cross-Functional)
 
