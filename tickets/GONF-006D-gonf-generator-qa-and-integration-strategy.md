@@ -27,8 +27,9 @@ So that new builds do not break existing behavior or room-graph consistency.
    - bidirectional link integrity
    - map render by floor
 3. Negative-path tests cover invalid file type, invalid Gonf JSON, duplicate room names, and missing Gonf Name.
-4. Regression checks confirm existing schema preview workflow still operates.
-5. QA publishes pass/fail cycles with defect references and retest outcomes.
+4. Validation includes signature/version checks for `format=Gonf` and `schemaVersion=1.0`, with unknown versions rejected.
+5. Regression checks confirm existing schema preview workflow still operates.
+6. QA publishes pass/fail cycles with defect references and retest outcomes.
 
 ## Edge Cases and Error Handling
 
@@ -76,6 +77,7 @@ So that new builds do not break existing behavior or room-graph consistency.
 4. Verify east/west linkage behavior is symmetric and rendered correctly.
 5. Verify vertical exit filtering and linkage skip floor 0 using +/-2 fallback.
 6. Verify save path behavior uses C:\Gonf, including folder auto-create when missing.
+7. Verify invalid signature/version payloads return correct machine error codes and user guidance.
 
 ## Traceability
 

@@ -15,6 +15,8 @@ Deliver backend behavior for Gonf Generator so users can load, validate, save, a
 7. Invalid uploads or invalid Gonf payloads must return actionable errors.
 8. Save destination is C:\Gonf for all Gonf JSON files.
 9. If C:\Gonf does not exist, it must be created automatically before save.
+10. Load validation must enforce Gonf signature fields (`format=Gonf`, `schemaVersion=1.0`).
+11. Unknown schema versions must be rejected.
 
 ## User Story
 
@@ -25,22 +27,30 @@ So that my Gonf can be edited over time without broken navigation links.
 ## Acceptance Criteria
 
 1. Backend supports loading existing Gonf JSON and validating Gonf schema.
-2. Backend save operation assigns `roomId = max(existing) + 1` for new room inserts.
-3. Backend enforces unique room names.
-4. Backend updates opposite-direction links when an exit is set:
+2. Load validation rejects payloads missing required signature fields (`format`, `schemaVersion`) or with unsupported `schemaVersion`.
+3. Backend save operation assigns `roomId = max(existing) + 1` for new room inserts.
+4. Backend enforces unique room names.
+5. Backend updates opposite-direction links when an exit is set:
    - north <-> south
    - east <-> west
    - up <-> down
-5. Backend applies floor-0 skip behavior for vertical exits:
+6. Backend applies floor-0 skip behavior for vertical exits:
    - up target floor = current + 1, except when result is 0 then current + 2
    - down target floor = current - 1, except when result is 0 then current - 2
-6. Backend allows blank exits (no connection).
-7. Save writes to C:\Gonf\[gonf-name].json.
-8. If C:\Gonf does not exist, save operation creates the folder and then writes file.
-9. Save overwrites existing C:\Gonf\[gonf-name].json if found; otherwise creates it.
-10. Save returns success envelope with user-facing confirmation message.
-11. Validation and persistence errors return machine code + user guidance.
-12. Automated tests cover load validation, ID assignment, link synchronization, folder auto-create, and overwrite/create behavior.
+7. Backend allows blank exits (no connection).
+8. Save writes to C:\Gonf\[gonf-name].json.
+9. If C:\Gonf does not exist, save operation creates the folder and then writes file.
+10. Save overwrites existing C:\Gonf\[gonf-name].json if found; otherwise creates it.
+11. Save returns success envelope with user-facing confirmation message.
+12. Validation and persistence errors return machine code + user guidance.
+13. Error taxonomy includes at minimum:
+   - `INVALID_FILE_TYPE`
+   - `INVALID_GONF_SIGNATURE`
+   - `UNSUPPORTED_GONF_SCHEMA_VERSION`
+   - `DUPLICATE_ROOM_NAME`
+   - `INVALID_ROOM_FLOOR`
+   - `INVALID_EXIT_REFERENCE`
+14. Automated tests cover load validation, signature/version checks, ID assignment, link synchronization, folder auto-create, and overwrite/create behavior.
 
 ## Edge Cases and Error Handling
 
@@ -72,9 +82,8 @@ So that my Gonf can be edited over time without broken navigation links.
 
 ## Open Questions
 
-1. Canonical Gonf JSON schema versioning approach.
-2. Maximum allowed room count per Gonf for MVP.
-3. Conflict strategy when a save would overwrite externally modified file content.
+1. Maximum allowed room count per Gonf for MVP.
+2. Conflict strategy when a save would overwrite externally modified file content.
 
 ## Architecture Notes
 

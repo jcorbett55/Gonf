@@ -54,7 +54,7 @@ So that implementation can proceed without requirement ambiguity.
 
 ## Open Questions
 
-1. What defines a valid "Gonf JSON" signature/schema for load validation?
+None at this time.
 
 ## Decision Log
 
@@ -81,6 +81,28 @@ So that implementation can proceed without requirement ambiguity.
   - Subsequent saves always target C:\Gonf.
   - Owner: Business Owner
   - Decision Date: 2026-07-09
+
+5. Gonf JSON validity/signature definition is finalized as:
+   - Top-level required signature fields:
+     - `format`: must equal `Gonf`
+     - `schemaVersion`: must equal `1.0`
+   - Top-level required fields:
+     - `gonfName`: non-empty string
+     - `rooms`: array
+   - Room required fields:
+     - `roomId`: integer
+     - `roomName`: non-empty string, unique within Gonf
+     - `roomDescription`: string
+     - `roomFloor`: one of -5, -4, -3, -2, -1, 1, 2, 3, 4, 5
+   - Room exit fields (optional/null allowed):
+     - `northExit`, `eastExit`, `southExit`, `westExit`, `upExit`, `downExit`
+     - when populated, each value must reference an existing `roomId`
+   - Integrity checks:
+     - floor 0 is invalid
+     - vertical transitions follow skip-zero rule
+     - opposite-direction links must be consistent after save
+   - Owner: Business Owner
+   - Decision Date: 2026-07-09
 
 ## Architecture Notes
 
