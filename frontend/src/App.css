@@ -338,6 +338,12 @@ th {
   gap: 0.55rem;
 }
 
+.gg-save-gonf-button {
+  margin-left: auto;
+  background: #1e5f44;
+  color: #fff;
+}
+
 .gg-map-panel {
   display: grid;
   gap: 0.75rem;
@@ -507,6 +513,10 @@ th {
   .gg-action-group {
     justify-content: start;
     flex-wrap: wrap;
+  }
+
+  .gg-save-gonf-button {
+    margin-left: 0;
   }
 
   .gg-map-canvas {

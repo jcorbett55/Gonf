@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5131'
 const floors = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5]
 const planarDirections = ['north', 'east', 'south', 'west']
 const allDirections = ['north', 'east', 'south', 'west', 'up', 'down']
@@ -414,6 +415,54 @@ export default function GonfGenerator() {
     })
   }
 
+  const onSaveGonf = async () => {
+    if (!gonfName.trim()) {
+      setStatusMessage('Gonf Name is required before saving the Gonf file.')
+      return
+    }
+
+    const savePayload = {
+      gonfName: gonfName.trim(),
+      rooms: rooms.map((room) => ({
+        roomId: room.roomId,
+        roomName: room.roomName,
+        roomDescription: room.roomDescription,
+        roomFloor: room.roomFloor,
+        exits: {
+          north: room.exits.north,
+          east: room.exits.east,
+          south: room.exits.south,
+          west: room.exits.west,
+          up: room.exits.up,
+          down: room.exits.down,
+        },
+      })),
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/gonf/save`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(savePayload),
+      })
+
+      const payload = await response.json().catch(() => null)
+
+      if (!response.ok || !payload?.success) {
+        const message = payload?.errors?.[0]?.message ?? 'Could not save Gonf. Please try again.'
+        setStatusMessage(message)
+        return
+      }
+
+      const message = payload?.data?.message ?? `Saved Gonf to C:\\Gonf\\${gonfName.trim()}.json.`
+      setStatusMessage(message)
+    } catch {
+      setStatusMessage('Could not save Gonf because the save service is unavailable.')
+    }
+  }
+
   const onLoadExistingGonf = async (event) => {
     const file = event.target.files?.[0]
     if (!file) {
@@ -621,6 +670,9 @@ export default function GonfGenerator() {
           </button>
           <button type="button" className="gg-clear-button" onClick={onClearForm}>
             Clear
+          </button>
+          <button type="button" className="gg-save-gonf-button" onClick={onSaveGonf}>
+            Save Gonf
           </button>
         </div>
       </section>

@@ -100,6 +100,12 @@ app.MapPost("/api/schema/preview", async (HttpRequest request, ILogger<Program> 
 })
 .WithName("GenerateSchemaPreview");
 
+app.MapPost("/api/gonf/save", async (SaveGonfRequest request, ILogger<Program> logger) =>
+{
+    return await HandleSaveGonfRequestAsync(request, logger);
+})
+.WithName("SaveGonf");
+
 await app.RunAsync();
 
 static async Task<IResult> HandleSchemaPreviewRequestAsync(HttpRequest request, ILogger logger)
@@ -163,6 +169,94 @@ static IResult? ValidateFile(IFormFile? file)
     return null;
 }
 
+static async Task<IResult> HandleSaveGonfRequestAsync(SaveGonfRequest request, ILogger logger)
+{
+    if (string.IsNullOrWhiteSpace(request.GonfName))
+    {
+        return CreateErrorResult(StatusCodes.Status400BadRequest, "GONF_NAME_REQUIRED", "Please provide a Gonf Name before saving.");
+    }
+
+    if (request.Rooms is null)
+    {
+        return CreateErrorResult(StatusCodes.Status400BadRequest, "ROOMS_REQUIRED", "Could not save Gonf because room data is missing.");
+    }
+
+    if (request.GonfName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+    {
+        return CreateErrorResult(StatusCodes.Status400BadRequest, "INVALID_GONF_NAME", "Gonf Name contains invalid file name characters.");
+    }
+
+    const string saveDirectory = @"C:\Gonf";
+    var savePath = Path.Combine(saveDirectory, $"{request.GonfName}.json");
+
+    var savePayload = new
+    {
+        format = "Gonf",
+        schemaVersion = "1.0",
+        gonfName = request.GonfName,
+        rooms = request.Rooms.Select(room => new
+        {
+            roomId = room.RoomId,
+            roomName = room.RoomName,
+            roomDescription = room.RoomDescription,
+            roomFloor = room.RoomFloor,
+            exits = new
+            {
+                north = room.Exits.North,
+                east = room.Exits.East,
+                south = room.Exits.South,
+                west = room.Exits.West,
+                up = room.Exits.Up,
+                down = room.Exits.Down,
+            },
+        }),
+    };
+
+    try
+    {
+        Directory.CreateDirectory(saveDirectory);
+
+        var json = JsonSerializer.Serialize(savePayload, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+        });
+
+        await File.WriteAllTextAsync(savePath, json);
+
+        return Results.Json(new
+        {
+            code = StatusCodes.Status200OK,
+            success = true,
+            errors = Array.Empty<object>(),
+            data = new
+            {
+                path = savePath,
+                message = $"Saved Gonf to {savePath}.",
+            },
+        }, statusCode: StatusCodes.Status200OK);
+    }
+    catch (UnauthorizedAccessException ex)
+    {
+        logger.LogWarning(ex, "Unable to save Gonf due to access permissions. Path: {SavePath}", savePath);
+        return CreateErrorResult(StatusCodes.Status403Forbidden, "SAVE_ACCESS_DENIED", "Couldn't save Gonf because access to C:\\Gonf is denied.");
+    }
+    catch (IOException ex) when (IsDiskFull(ex))
+    {
+        logger.LogWarning(ex, "Unable to save Gonf due to low disk space. Path: {SavePath}", savePath);
+        return CreateErrorResult(StatusCodes.Status507InsufficientStorage, "INSUFFICIENT_STORAGE", "Couldn't save Gonf because the drive is out of space.");
+    }
+    catch (IOException ex)
+    {
+        logger.LogWarning(ex, "Unable to save Gonf due to file system error. Path: {SavePath}", savePath);
+        return CreateErrorResult(StatusCodes.Status500InternalServerError, "SAVE_FAILED", "Couldn't save Gonf due to a file system error. Please try again.");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Unexpected error while saving Gonf. Path: {SavePath}", savePath);
+        return CreateErrorResult(StatusCodes.Status500InternalServerError, "SAVE_FAILED", "Couldn't save Gonf due to an unexpected error. Please try again.");
+    }
+}
+
 static async Task<JsonDocument?> TryParseJsonAsync(Stream stream, string fileName, ILogger logger)
 {
     try
@@ -194,5 +288,23 @@ static bool IsLoopbackOrigin(string origin)
 
     return isLocalHost && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 }
+
+static bool IsDiskFull(IOException exception)
+{
+    var hResult = unchecked((uint)exception.HResult);
+    return hResult == 0x80070070 || hResult == 0x80070027;
+}
+
+public sealed record SaveGonfRequest(string GonfName, IReadOnlyList<SaveGonfRoomRequest> Rooms);
+
+public sealed record SaveGonfRoomRequest(
+    int RoomId,
+    string RoomName,
+    string RoomDescription,
+    int RoomFloor,
+    SaveGonfExitsRequest Exits
+);
+
+public sealed record SaveGonfExitsRequest(int? North, int? East, int? South, int? West, int? Up, int? Down);
 
 public partial class Program;
