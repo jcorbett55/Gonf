@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import './App.css'
+import GonfGenerator from './GonfGenerator'
 import GonfGeneratorMockup from './GonfGeneratorMockup'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5131'
@@ -133,6 +134,13 @@ function App() {
           className={activeSection === 'gg' ? 'is-active' : ''}
           onClick={() => setActiveSection('gg')}
         >
+          Gonf Generator
+        </button>
+        <button
+          type="button"
+          className={`${activeSection === 'gg-mockup' ? 'is-active' : ''} mockup-tab`}
+          onClick={() => setActiveSection('gg-mockup')}
+        >
           Gonf Generator (Mockup)
         </button>
       </nav>
@@ -214,6 +222,8 @@ function App() {
             </div>
           </section>
         </main>
+      ) : activeSection === 'gg' ? (
+        <GonfGenerator />
       ) : (
         <GonfGeneratorMockup />
       )}

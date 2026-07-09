@@ -31,6 +31,10 @@
   color: #fff;
 }
 
+.section-switcher .mockup-tab {
+  margin-left: auto;
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--edge);
@@ -448,6 +452,10 @@ th {
     margin-top: 0.7rem;
     border-radius: 14px;
     flex-direction: column;
+  }
+
+  .section-switcher .mockup-tab {
+    margin-left: 0;
   }
 
   .app-shell {
