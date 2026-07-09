@@ -110,7 +110,11 @@ So that implementation and testing can proceed without ambiguity or contract dri
 
 ## Status
 
-- Current Status: Ready for Development
-- Owner: Developer
-- Last Updated: 2026-07-08
+- Current Status: Paused (Reprioritized by GONF-006 epic)
+- Owner: Business Analyst
+- Last Updated: 2026-07-09
 - Branch Naming Target: feature/GONF-002-backend-contract-hardening
+
+## Reprioritization Note
+
+This ticket is paused while GONF-006 (New Business Functionality Epic) is decomposed and prioritized for delivery.
