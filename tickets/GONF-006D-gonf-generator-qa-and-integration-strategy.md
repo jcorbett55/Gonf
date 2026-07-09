@@ -93,7 +93,7 @@ So that new builds do not break existing behavior or room-graph consistency.
 
 ## Status
 
-- Current Status: Draft
+- Current Status: In Progress (QA Execution)
 - Owner: QA
 - Last Updated: 2026-07-09
 - Branch Naming Target: feature/GONF-006D-qa-integration
