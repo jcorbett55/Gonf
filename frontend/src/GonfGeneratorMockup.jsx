@@ -73,13 +73,16 @@ function getTargetFloor(selectedFloor, direction) {
     return null
   }
 
+  // Skip floor 0 for vertical movement, then reject out-of-range results.
   if (direction === 'up') {
     const next = selectedFloor + 1
-    return next === 0 ? selectedFloor + 2 : next
+    const target = next === 0 ? selectedFloor + 2 : next
+    return floors.includes(target) ? target : null
   }
 
   const next = selectedFloor - 1
-  return next === 0 ? selectedFloor - 2 : next
+  const target = next === 0 ? selectedFloor - 2 : next
+  return floors.includes(target) ? target : null
 }
 
 function roomNameById(roomsById, roomId) {

@@ -1,19 +1,36 @@
 using Gonf.Api.Models;
 using Gonf.Api.Services;
+using System.Net;
 using System.Text.Json;
 
 const long MaxUploadBytes = 1 * 1024 * 1024;
 
 var builder = WebApplication.CreateBuilder(args);
+var configuredCorsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+var configuredCorsOriginSet = new HashSet<string>(configuredCorsOrigins, StringComparer.OrdinalIgnoreCase);
 
 builder.Services.AddOpenApi();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("gonf-frontend", policy =>
     {
-        policy.WithOrigins("http://localhost:5173")
-              .AllowAnyHeader()
-              .AllowAnyMethod();
+        if (builder.Environment.IsDevelopment())
+        {
+            policy.SetIsOriginAllowed(origin => IsLoopbackOrigin(origin) || configuredCorsOriginSet.Contains(origin))
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+            return;
+        }
+
+        if (configuredCorsOrigins.Length > 0)
+        {
+            policy.WithOrigins(configuredCorsOrigins)
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+            return;
+        }
+
+        policy.SetIsOriginAllowed(_ => false);
     });
 });
 
@@ -162,6 +179,20 @@ static async Task<JsonDocument?> TryParseJsonAsync(Stream stream, string fileNam
 static IResult CreateErrorResult(int statusCode, string code, string message)
 {
     return Results.Json(ApiResponse.CreateError(statusCode, code, message), statusCode: statusCode);
+}
+
+static bool IsLoopbackOrigin(string origin)
+{
+    if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+    {
+        return false;
+    }
+
+    // Allow any loopback host (localhost, 127.0.0.1, ::1) for local development.
+    var isLocalHost = uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                      || (IPAddress.TryParse(uri.Host, out var ip) && IPAddress.IsLoopback(ip));
+
+    return isLocalHost && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 }
 
 public partial class Program;

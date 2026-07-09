@@ -35,6 +35,15 @@ New business functionality has been requested and approved to precede remaining 
 4. Open questions register with owner and decision date.
 5. Traceability map from epic to child tickets.
 
+## Development Guidance (Readability)
+
+1. Add brief intent-focused comments for non-obvious logic and behavior changes.
+2. Comments should explain why the change exists and reference the ticket when relevant.
+3. Prefer concrete wording patterns such as:
+  - "Updated this function for GONF-0012 by adding null checks to avoid runtime failures."
+  - "This method renders the Gonf map view and connection overlays."
+4. Avoid noisy comments that restate obvious syntax; prioritize comments that help reviewers and future maintainers.
+
 ## Child Ticket Plan
 
 1. GONF-006A - Discovery and finalized business rules [Draft]
