@@ -5,6 +5,32 @@
   gap: 1rem;
 }
 
+.section-switcher {
+  width: min(1100px, 96vw);
+  margin: 1.2rem auto 0;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.3rem;
+  background: #f6f2e8;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+}
+
+.section-switcher button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.45rem 0.95rem;
+  font-weight: 700;
+  color: #344054;
+  background: transparent;
+  cursor: pointer;
+}
+
+.section-switcher button.is-active {
+  background: var(--highlight);
+  color: #fff;
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--edge);
@@ -140,7 +166,225 @@ th {
   color: #667085;
 }
 
+.gg-intro {
+  background: linear-gradient(155deg, #f8fafc 5%, #fff7e8 55%, #f6f0ff 100%);
+}
+
+.gg-workflow {
+  display: grid;
+  gap: 1rem;
+}
+
+.gg-top-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.9rem;
+  align-items: end;
+}
+
+.gg-action-group {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.gg-action-group button,
+.gg-load-button,
+.gg-button-row button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.55rem 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gg-action-group button,
+.gg-save-button {
+  background: var(--highlight);
+  color: #fff;
+}
+
+.gg-load-button,
+.gg-clear-button {
+  background: #ebeef5;
+  color: #344054;
+}
+
+.gg-load-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.gg-load-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.gg-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.gg-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.gg-field span {
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.gg-field input,
+.gg-field select,
+.gg-field textarea {
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 0.5rem 0.6rem;
+  background: #fff;
+  font: inherit;
+}
+
+.gg-field textarea {
+  resize: vertical;
+}
+
+.gg-field small {
+  color: #667085;
+  font-size: 0.78rem;
+}
+
+.gg-wide {
+  grid-column: span 2;
+}
+
+.gg-button-row {
+  display: flex;
+  gap: 0.55rem;
+}
+
+.gg-map-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.gg-map-panel h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.gg-floor-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.gg-floor-tab {
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  background: #fff;
+  color: #344054;
+  padding: 0.35rem 0.8rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.gg-floor-tab.is-active {
+  background: #22577a;
+  color: #fff;
+  border-color: #22577a;
+}
+
+.gg-map-layout {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 0.8rem;
+}
+
+.gg-map-canvas {
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: #f9fbff;
+  min-height: 320px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(70px, 1fr));
+  grid-template-rows: repeat(4, minmax(70px, auto));
+  gap: 1.2rem;
+  padding: 1rem;
+  position: relative;
+}
+
+.gg-room-card {
+  align-self: center;
+  justify-self: center;
+  width: 100%;
+  min-height: 66px;
+  border: 1px solid #c8d6f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #1f2937;
+  padding: 0.35rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 24px -18px #19334f;
+}
+
+.gg-room-card.is-selected {
+  border-color: #22577a;
+  box-shadow: 0 0 0 2px rgba(34, 87, 122, 0.2);
+}
+
+.gg-link {
+  display: block;
+  background: #8aa5c8;
+  align-self: center;
+  justify-self: center;
+  pointer-events: none;
+}
+
+.gg-link-north {
+  width: 6px;
+  height: 35px;
+  margin-top: -62px;
+}
+
+.gg-link-east {
+  height: 6px;
+  width: 35px;
+  margin-left: 74px;
+}
+
+.gg-room-popover {
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: #fff;
+  padding: 0.85rem;
+}
+
+.gg-room-popover h3 {
+  margin: 0 0 0.5rem;
+}
+
+.gg-room-popover p {
+  margin: 0 0 0.6rem;
+}
+
+.gg-room-popover ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
 @media (max-width: 700px) {
+  .section-switcher {
+    margin-top: 0.7rem;
+    border-radius: 14px;
+    flex-direction: column;
+  }
+
   .app-shell {
     margin: 0.7rem auto;
   }
@@ -153,5 +397,26 @@ th {
   th,
   td {
     min-width: 110px;
+  }
+
+  .gg-top-actions,
+  .gg-map-layout,
+  .gg-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .gg-wide {
+    grid-column: span 1;
+  }
+
+  .gg-action-group {
+    justify-content: start;
+    flex-wrap: wrap;
+  }
+
+  .gg-map-canvas {
+    grid-template-columns: repeat(3, minmax(70px, 1fr));
+    grid-template-rows: repeat(5, minmax(70px, auto));
+    min-height: 340px;
   }
 }
