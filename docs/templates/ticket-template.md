@@ -99,7 +99,7 @@ So that [business value]
 
 ### Ready for QA
 
-- [ ] Code merged after dev lead sign-off
+- [ ] Code review-approved on ticket branch after dev lead sign-off
 - [ ] Commit/review links added to ticket
 - [ ] AC-to-change mapping provided
 - [ ] Developer test evidence attached
@@ -121,6 +121,6 @@ So that [business value]
 
 ## Status
 
-- Current Status: [Draft | Rework | Ready for Development | In Development | In Review | Merged for QA | In QA | UAT Approved | Closed | Invalid]
+- Current Status: [Draft | Rework | Ready for Development | In Development | In Review | QA Validation on Branch | Merged After QA | UAT Approved | Closed | Invalid]
 - Owner: [role/person]
 - Last Updated: [yyyy-mm-dd]

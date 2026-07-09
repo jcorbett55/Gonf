@@ -125,7 +125,7 @@ This ticket was reviewed by BA, Dev Lead, and QA. Clarifications were completed 
 
 ```json
 {
-  "code": 500,
+  "code": 400,
   "success": false,
   "errors": [
     {
@@ -137,7 +137,7 @@ This ticket was reviewed by BA, Dev Lead, and QA. Clarifications were completed 
 }
 ```
 
-- Expected handled error classes in this sprint: 500, 404, 502.
+- Expected handled error classes in this sprint: 400, 404, 413, 500, 502.
 - If contract shape changes across multiple tickets, create a dedicated architecture note and link it here.
 
 ## QA Notes and Test Intent
@@ -148,21 +148,55 @@ This ticket was reviewed by BA, Dev Lead, and QA. Clarifications were completed 
 4. Verify schema preview matches API response content.
 5. Verify no persistence side effects from upload operation.
 
+## QA Execution Report
+
+### Cycle 1 - 2026-07-09
+
+1. Backend automated tests: PASS (6 passed, 0 failed)
+2. Frontend automated tests: PASS (3 passed, 0 failed)
+3. Backend build regression check: PASS
+4. Defects opened in this cycle: 0
+5. Residual risks:
+  - Existing dependency warning remains for `Microsoft.OpenApi` (NU1903).
+  - Endpoint-level integration tests for status/contract regression are not yet implemented and are tracked in GONF-004.
+
+### Cycle 2 - 2026-07-09
+
+1. API manual validation checks executed:
+  - valid JSON upload -> PASS (200)
+  - invalid JSON upload -> PASS (400 / INVALID_JSON)
+  - zero-byte JSON upload -> PASS (400 / EMPTY_FILE)
+  - invalid file extension upload -> PASS (400 / INVALID_FILE_TYPE)
+  - oversized payload upload -> PASS (413 / PAYLOAD_TOO_LARGE)
+  - missing file in request -> FAIL (actual 500 / SERVER_ERROR)
+2. Defects opened in this cycle: 1
+3. Blocking defects: 1 (see GONF-005)
+
+### Cycle 3 - 2026-07-09
+
+1. Backend regression + integration re-test: PASS (9 passed, 0 failed)
+2. Frontend regression re-test: PASS (3 passed, 0 failed)
+3. GONF-005 retest outcome: PASS
+4. Blocking defects: 0
+5. QA Decision: PASS
+
 ## Traceability
 
 - Parent Ticket: GONF-001
+- Branch: feature/GONF-001-thin-vertical-sprint
 - Related Commits:
-  1. [to be added]
-  2. [to be added]
+  1. 1cb5f70 - GONF-001: harden upload validation and malformed response handling
+  2. 8b3fca9 - GONF-001: return client-appropriate error status codes
 - Related PR/Code Review:
-  1. [to be added]
-  2. [to be added]
+  1. Cross-functional review pass completed on feature branch
+  2. Post-fix review pass completed after status-code correction
 - Code Review Participants:
-  1. Dev Lead: [pending]
-  2. Backend Developer: [pending]
-  3. Frontend Developer: [pending]
-- QA Results: [pending]
-- Bug Tickets: [pending]
+  1. Dev Lead: true
+  2. Backend Developer: true
+  3. Frontend Developer: true
+- QA Results: PASS (Cycle 3 complete, no blocking defects)
+- Bug Tickets:
+  1. GONF-005 - Missing file request returns SERVER_ERROR (500) instead of FILE_REQUIRED (400) [resolved]
 
 ## Code Review Checklist (Cross-Functional)
 
@@ -188,19 +222,19 @@ This ticket was reviewed by BA, Dev Lead, and QA. Clarifications were completed 
 
 ### Ready for QA
 
-- [ ] Code merged after dev lead sign-off
-- [ ] Commit/review links added to ticket
-- [ ] Code reviewed by lead, backend dev, and frontend dev
+- [x] Code review-approved on ticket branch after dev lead sign-off
+- [x] Commit/review links added to ticket
+- [x] Code reviewed by lead, backend dev, and frontend dev
 - [ ] AC-to-change mapping provided
-- [ ] Developer test evidence attached
+- [x] Developer test evidence attached
 - [ ] Known limitations documented
-- [ ] QA test cases prepared
-- [ ] QA environment/config documented
-- [ ] Dev-review bugs fixed or tracked
+- [x] QA test cases prepared
+- [x] QA environment/config documented
+- [x] Dev-review bugs fixed or tracked
 
 ## Status
 
-- Current Status: In Review
+- Current Status: Merged After QA
 - Owner: Dev Lead
-- Last Updated: 2026-07-08
+- Last Updated: 2026-07-09
 - Branch Naming Target: feature/GONF-001-thin-vertical-sprint

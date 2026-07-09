@@ -19,6 +19,7 @@ Protect product quality by validating delivered behavior against ticket requirem
 
 - Test design from acceptance criteria
 - Functional and regression validation
+- Integration and API contract regression strategy for multi-layer changes
 - Defect reporting and re-test verification
 - Ticket-level quality evidence
 
@@ -37,6 +38,7 @@ Protect product quality by validating delivered behavior against ticket requirem
 ## Standard Outputs
 
 - Test cases mapped to acceptance criteria
+- Integration test coverage matrix for API/UI/data flow touchpoints
 - Execution report with pass/fail outcomes
 - Defect reports with severity and reproduction steps
 - Final validation summary for ticket closure
@@ -44,15 +46,17 @@ Protect product quality by validating delivered behavior against ticket requirem
 ## Workflow
 
 1. Convert acceptance criteria into test cases.
-2. Execute tests against completed, committed work.
-3. Record results and evidence.
-4. Log defects and collaborate on retest.
-5. Publish ticket-level validation summary.
+2. Define required integration checks for impacted backend/frontend/service boundaries.
+3. Execute tests against completed, committed work.
+4. Record results and evidence.
+5. Log defects and collaborate on retest.
+6. Publish ticket-level validation summary.
 
 ## Quality Gates
 
 - All acceptance criteria have test coverage.
 - Critical paths and edge cases are tested.
+- Integration checks exist for impacted dependencies and contract boundaries.
 - Defects include reproducible details.
 - Regression checks are run for impacted areas.
 

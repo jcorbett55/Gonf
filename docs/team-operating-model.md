@@ -13,6 +13,11 @@ Define how business objectives become tickets, code, tests, and promotion decisi
 - Frontend Developer: Implements frontend/UI ticket work, provides UI mockups for business review, and drives overall UI look and feel.
 - QA: Defines and executes test coverage, determines promotion to UAT, and creates bug tickets when needed.
 
+Integration-testing ownership model:
+- QA owns integration test planning, coverage definition, and pass/fail decisioning.
+- Backend and frontend developers own implementation support for test harnesses and stable test hooks.
+- Dev lead approves required integration coverage for cross-service or API contract changes.
+
 ## Ticket Source of Truth
 
 - The ticket is the primary source of truth for implementation and testing.
@@ -53,13 +58,12 @@ Define how business objectives become tickets, code, tests, and promotion decisi
 - All development members participate in review for each ticket: Dev Lead, Backend Developer, Frontend Developer.
 - Cross-review is required for API/UI contract compatibility and integration risk detection.
 
-7. Merged for QA
-- After dev lead approval, change merges and is handed to QA.
+7. QA Validation on Branch
+- After dev lead approval, QA validates the ticket branch prior to merge.
+- QA can approve for merge or open bug tickets.
 
-8. QA Validation
-- QA executes test cases.
-- QA can promote to UAT or open bug tickets.
-- Bug tickets must pass QA before progressing.
+8. Merged After QA
+- Once QA passes branch validation, change is merged to main.
 
 9. UAT Ready
 - QA approves promotion to UAT.
@@ -81,7 +85,7 @@ A ticket is ready for development only if all checks pass:
 
 A change is ready for QA only if all checks pass:
 
-1. Code is merged after dev lead review approval.
+1. Code is review-approved on the ticket branch after dev lead sign-off.
 2. Ticket links all related commits and review outcomes.
 3. Acceptance criteria mapping is provided.
 4. Developer test evidence is attached.
@@ -90,6 +94,15 @@ A change is ready for QA only if all checks pass:
 7. QA test cases are prepared from the approved ticket.
 8. Environment/config required for QA is provided.
 9. Bugs found during dev review are fixed or tracked.
+10. Integration/contract regression checks are defined for impacted dependencies.
+
+## Merge Gate After QA
+
+A change can be merged to main only if all checks pass:
+
+1. QA branch validation is complete with no blocking defects.
+2. Any QA defects are fixed or explicitly accepted by Business Owner and QA.
+3. Ticket traceability includes QA evidence and review outcomes.
 
 ## Frontend Standards
 
