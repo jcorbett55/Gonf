@@ -11,7 +11,8 @@ Deliver backend behavior for Gonf Generator so users can load, validate, save, a
 3. Room Name must be unique within a Gonf.
 4. Exits (north, east, south, west, up, down) must reference valid room IDs.
 5. Saving a room must maintain bidirectional connection consistency.
-6. Invalid uploads or invalid Gonf payloads must return actionable errors.
+6. Vertical transitions must skip floor 0 using rule: if floor +/- 1 = 0, use floor +/- 2.
+7. Invalid uploads or invalid Gonf payloads must return actionable errors.
 
 ## User Story
 
@@ -28,11 +29,14 @@ So that my Gonf can be edited over time without broken navigation links.
    - north <-> south
    - east <-> west
    - up <-> down
-5. Backend allows blank exits (no connection).
-6. Save overwrites existing `[gonf-name].json` if found; otherwise creates it.
-7. Save returns success envelope with user-facing confirmation message.
-8. Validation and persistence errors return machine code + user guidance.
-9. Automated tests cover load validation, ID assignment, link synchronization, and overwrite/create behavior.
+5. Backend applies floor-0 skip behavior for vertical exits:
+   - up target floor = current + 1, except when result is 0 then current + 2
+   - down target floor = current - 1, except when result is 0 then current - 2
+6. Backend allows blank exits (no connection).
+7. Save overwrites existing `[gonf-name].json` if found; otherwise creates it.
+8. Save returns success envelope with user-facing confirmation message.
+9. Validation and persistence errors return machine code + user guidance.
+10. Automated tests cover load validation, ID assignment, link synchronization, and overwrite/create behavior.
 
 ## Edge Cases and Error Handling
 

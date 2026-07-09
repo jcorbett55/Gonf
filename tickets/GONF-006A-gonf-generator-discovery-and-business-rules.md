@@ -54,9 +54,8 @@ So that implementation can proceed without requirement ambiguity.
 
 ## Open Questions
 
-1. Down-exit rule says floor `+ 1`; should down instead be floor `- 1`?
-2. Save destination: should `[gonf-name].json` be stored server-side, offered as browser download, or both?
-3. What defines a valid "Gonf JSON" signature/schema for load validation?
+1. Save destination: should `[gonf-name].json` be stored server-side, offered as browser download, or both?
+2. What defines a valid "Gonf JSON" signature/schema for load validation?
 
 ## Decision Log
 
@@ -70,6 +69,13 @@ So that implementation can proceed without requirement ambiguity.
   - Owner: Business Owner
   - Decision Date: 2026-07-09
   - Notes: Horizontal directions are north, east, south, and west.
+
+3. Vertical floor transition rule skips floor 0:
+  - Up candidates: current floor + 1; if result is 0 then use +2.
+  - Down candidates: current floor - 1; if result is 0 then use -2.
+  - Owner: Business Owner
+  - Decision Date: 2026-07-09
+  - Notes: Floor 0 does not exist in GG.
 
 ## Architecture Notes
 

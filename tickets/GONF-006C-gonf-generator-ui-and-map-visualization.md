@@ -14,6 +14,7 @@ Deliver the Gonf Generator frontend experience so users can create/load Gonfs, m
 4. Save requires Gonf Name.
 5. Clear resets form to initial state.
 6. Up/Down exits remain disabled until Room Floor is selected.
+7. Up/Down room options must follow floor-0 skip rule: if floor +/- 1 = 0, use floor +/- 2.
 
 ## User Story
 
@@ -32,11 +33,14 @@ So that I can understand and edit room navigation structure quickly.
    - Room Description
   - Room Floor (one of: -5, -4, -3, -2, -1, 1, 2, 3, 4, 5)
   - Directional exits: North, East, South, West, Up, Down (using room-name labels with room-id values)
-5. Save sends data and shows success or actionable error messages.
-6. On successful save, form clears and map refreshes from latest Gonf data.
-7. Lower map area provides 10 floor tabs (-5, -4, -3, -2, -1, 1, 2, 3, 4, 5) and renders only rooms for selected floor.
-8. Room visualization uses square nodes with room names and connector lines for exits.
-9. Hover/click on room shows popup with name, description, and exits.
+5. Vertical exit dropdown filtering skips floor 0:
+  - Up options use current floor + 1, except when result is 0 then current + 2
+  - Down options use current floor - 1, except when result is 0 then current - 2
+6. Save sends data and shows success or actionable error messages.
+7. On successful save, form clears and map refreshes from latest Gonf data.
+8. Lower map area provides 10 floor tabs (-5, -4, -3, -2, -1, 1, 2, 3, 4, 5) and renders only rooms for selected floor.
+9. Room visualization uses square nodes with room names and connector lines for exits.
+10. Hover/click on room shows popup with name, description, and exits.
 
 ## Edge Cases and Error Handling
 

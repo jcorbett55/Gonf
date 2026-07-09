@@ -74,6 +74,7 @@ So that new builds do not break existing behavior or room-graph consistency.
 2. Verify error-to-guidance messaging quality.
 3. Verify no regression in existing Gonf upload/schema preview flow.
 4. Verify east/west linkage behavior is symmetric and rendered correctly.
+5. Verify vertical exit filtering and linkage skip floor 0 using +/-2 fallback.
 
 ## Traceability
 
