@@ -32,7 +32,7 @@ So that new builds do not break existing behavior or room-graph consistency.
 
 ## Edge Cases and Error Handling
 
-1. Up/down transitions violate floor constraints.
+1. Up/down transitions violate finalized floor constraints (-5, -4, -3, -2, -1, 1, 2, 3, 4, 5).
 2. Exit links become one-way after edit.
 3. Duplicate room names introduced by load + edit.
 4. Save succeeds but map fails to render expected connections.

@@ -30,11 +30,11 @@ So that I can understand and edit room navigation structure quickly.
    - Room ID (hidden/system-managed display)
    - Room Name
    - Room Description
-   - Room Floor (-5 through 10)
+  - Room Floor (one of: -5, -4, -3, -2, -1, 1, 2, 3, 4, 5)
    - Directional exits using room-name labels with room-id values
 5. Save sends data and shows success or actionable error messages.
 6. On successful save, form clears and map refreshes from latest Gonf data.
-7. Lower map area provides floor tabs and renders only rooms for selected floor.
+7. Lower map area provides 10 floor tabs (-5, -4, -3, -2, -1, 1, 2, 3, 4, 5) and renders only rooms for selected floor.
 8. Room visualization uses square nodes with room names and connector lines for exits.
 9. Hover/click on room shows popup with name, description, and exits.
 

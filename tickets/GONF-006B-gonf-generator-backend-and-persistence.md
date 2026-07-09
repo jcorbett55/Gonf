@@ -39,7 +39,7 @@ So that my Gonf can be edited over time without broken navigation links.
 1. Upload extension is `.json` but schema is not Gonf-compliant.
 2. Gonf name contains invalid filename characters.
 3. Circular room references.
-4. Exit points to room on disallowed floor transition.
+4. Exit points to room on disallowed floor transition (outside -5, -4, -3, -2, -1, 1, 2, 3, 4, 5).
 5. Concurrent saves to same Gonf name.
 
 ## Non-Functional Requirements

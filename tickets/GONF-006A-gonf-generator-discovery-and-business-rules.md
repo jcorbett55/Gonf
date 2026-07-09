@@ -54,11 +54,18 @@ So that implementation can proceed without requirement ambiguity.
 
 ## Open Questions
 
-1. Floors are specified as -5 through 10, which is 16 floors, while intake says 15 tabs. Which is correct?
-2. Intake form includes north/south/west exits but map behavior references north/east/west/south. Should east exit exist on the form?
-3. Down-exit rule says floor `+ 1`; should down instead be floor `- 1`?
-4. Save destination: should `[gonf-name].json` be stored server-side, offered as browser download, or both?
-5. What defines a valid "Gonf JSON" signature/schema for load validation?
+1. Intake form includes north/south/west exits but map behavior references north/east/west/south. Should east exit exist on the form?
+2. Down-exit rule says floor `+ 1`; should down instead be floor `- 1`?
+3. Save destination: should `[gonf-name].json` be stored server-side, offered as browser download, or both?
+4. What defines a valid "Gonf JSON" signature/schema for load validation?
+
+## Decision Log
+
+1. Floors are finalized as 10 floors total with no floor 0:
+  -5, -4, -3, -2, -1, 1, 2, 3, 4, 5
+  - Owner: Business Owner
+  - Decision Date: 2026-07-09
+  - Notes: Negative values represent subground floors.
 
 ## Architecture Notes
 
