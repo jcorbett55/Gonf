@@ -154,7 +154,7 @@ This ticket was reviewed by BA, Dev Lead, and QA. Clarifications were completed 
 - Branch: feature/GONF-001-thin-vertical-sprint
 - Related Commits:
   1. 1cb5f70 - GONF-001: harden upload validation and malformed response handling
-  2. [pending current status-code fix commit]
+  2. 8b3fca9 - GONF-001: return client-appropriate error status codes
 - Related PR/Code Review:
   1. [to be added]
   2. [to be added]
