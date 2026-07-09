@@ -75,6 +75,7 @@ So that new builds do not break existing behavior or room-graph consistency.
 3. Verify no regression in existing Gonf upload/schema preview flow.
 4. Verify east/west linkage behavior is symmetric and rendered correctly.
 5. Verify vertical exit filtering and linkage skip floor 0 using +/-2 fallback.
+6. Verify save path behavior uses C:\Gonf, including folder auto-create when missing.
 
 ## Traceability
 

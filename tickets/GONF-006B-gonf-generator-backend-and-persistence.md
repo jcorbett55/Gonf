@@ -13,6 +13,8 @@ Deliver backend behavior for Gonf Generator so users can load, validate, save, a
 5. Saving a room must maintain bidirectional connection consistency.
 6. Vertical transitions must skip floor 0 using rule: if floor +/- 1 = 0, use floor +/- 2.
 7. Invalid uploads or invalid Gonf payloads must return actionable errors.
+8. Save destination is C:\Gonf for all Gonf JSON files.
+9. If C:\Gonf does not exist, it must be created automatically before save.
 
 ## User Story
 
@@ -33,10 +35,12 @@ So that my Gonf can be edited over time without broken navigation links.
    - up target floor = current + 1, except when result is 0 then current + 2
    - down target floor = current - 1, except when result is 0 then current - 2
 6. Backend allows blank exits (no connection).
-7. Save overwrites existing `[gonf-name].json` if found; otherwise creates it.
-8. Save returns success envelope with user-facing confirmation message.
-9. Validation and persistence errors return machine code + user guidance.
-10. Automated tests cover load validation, ID assignment, link synchronization, and overwrite/create behavior.
+7. Save writes to C:\Gonf\[gonf-name].json.
+8. If C:\Gonf does not exist, save operation creates the folder and then writes file.
+9. Save overwrites existing C:\Gonf\[gonf-name].json if found; otherwise creates it.
+10. Save returns success envelope with user-facing confirmation message.
+11. Validation and persistence errors return machine code + user guidance.
+12. Automated tests cover load validation, ID assignment, link synchronization, folder auto-create, and overwrite/create behavior.
 
 ## Edge Cases and Error Handling
 
@@ -45,6 +49,7 @@ So that my Gonf can be edited over time without broken navigation links.
 3. Circular room references.
 4. Exit points to room on disallowed floor transition (outside -5, -4, -3, -2, -1, 1, 2, 3, 4, 5).
 5. Concurrent saves to same Gonf name.
+6. Save fails due to folder permission or file lock in C:\Gonf.
 
 ## Non-Functional Requirements
 

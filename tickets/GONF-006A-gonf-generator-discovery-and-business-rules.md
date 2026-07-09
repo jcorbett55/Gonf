@@ -54,8 +54,7 @@ So that implementation can proceed without requirement ambiguity.
 
 ## Open Questions
 
-1. Save destination: should `[gonf-name].json` be stored server-side, offered as browser download, or both?
-2. What defines a valid "Gonf JSON" signature/schema for load validation?
+1. What defines a valid "Gonf JSON" signature/schema for load validation?
 
 ## Decision Log
 
@@ -76,6 +75,12 @@ So that implementation can proceed without requirement ambiguity.
   - Owner: Business Owner
   - Decision Date: 2026-07-09
   - Notes: Floor 0 does not exist in GG.
+
+4. Save destination is server-side folder C:\Gonf.
+  - If C:\Gonf does not exist, the application creates it before save.
+  - Subsequent saves always target C:\Gonf.
+  - Owner: Business Owner
+  - Decision Date: 2026-07-09
 
 ## Architecture Notes
 
