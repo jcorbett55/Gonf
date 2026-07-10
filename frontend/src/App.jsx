@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import './App.css'
+import GonfGenerator from './GonfGenerator'
+import GonfGeneratorMockup from './GonfGeneratorMockup'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5131'
 
@@ -23,6 +25,7 @@ function normalizeSchema(payload) {
 }
 
 function App() {
+  const [activeSection, setActiveSection] = useState('schema')
   const [selectedFile, setSelectedFile] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [schemaNodes, setSchemaNodes] = useState([])
@@ -117,82 +120,114 @@ function App() {
   }
 
   return (
-    <main className="app-shell">
-      <section className="panel intro-panel">
-        <p className="eyebrow">Gonf / Sprint 1</p>
-        <h1>JSON to Schema Preview</h1>
-        <p>
-          Upload a JSON file to generate minimal schema nodes with path, inferred type, and
-          repeatable object or field hints.
-        </p>
-      </section>
+    <>
+      <nav className="section-switcher" aria-label="Application Sections">
+        <button
+          type="button"
+          className={activeSection === 'schema' ? 'is-active' : ''}
+          onClick={() => setActiveSection('schema')}
+        >
+          Schema Preview
+        </button>
+        <button
+          type="button"
+          className={activeSection === 'gg' ? 'is-active' : ''}
+          onClick={() => setActiveSection('gg')}
+        >
+          Gonf Generator
+        </button>
+        <button
+          type="button"
+          className={`${activeSection === 'gg-mockup' ? 'is-active' : ''} mockup-tab`}
+          onClick={() => setActiveSection('gg-mockup')}
+        >
+          Gonf Generator (Mockup)
+        </button>
+      </nav>
 
-      <section className="panel workflow-panel">
-        <form onSubmit={onSubmit} className="upload-form">
-          <label htmlFor="jsonFile">JSON File</label>
-          <input
-            id="jsonFile"
-            type="file"
-            accept=".json,application/json"
-            onChange={onFileChange}
-          />
-          <button type="submit" disabled={isLoading}>
-            {isLoading ? 'Generating...' : 'Generate Preview'}
-          </button>
-        </form>
+      {activeSection === 'schema' ? (
+        <main className="app-shell">
+          <section className="panel intro-panel">
+            <p className="eyebrow">Gonf / Sprint 1</p>
+            <h1>JSON to Schema Preview</h1>
+            <p>
+              Upload a JSON file to generate minimal schema nodes with path, inferred type, and
+              repeatable object or field hints.
+            </p>
+          </section>
 
-        <output className={`status ${errors.length > 0 ? 'status-error' : 'status-info'}`}>
-          {statusBanner}
-        </output>
+          <section className="panel workflow-panel">
+            <form onSubmit={onSubmit} className="upload-form">
+              <label htmlFor="jsonFile">JSON File</label>
+              <input
+                id="jsonFile"
+                type="file"
+                accept=".json,application/json"
+                onChange={onFileChange}
+              />
+              <button type="submit" disabled={isLoading}>
+                {isLoading ? 'Generating...' : 'Generate Preview'}
+              </button>
+            </form>
 
-        {lastCode && <p className="code-pill">Response Code: {lastCode}</p>}
+            <output className={`status ${errors.length > 0 ? 'status-error' : 'status-info'}`}>
+              {statusBanner}
+            </output>
 
-        {errors.length > 0 && (
-          <div className="error-box" role="alert" aria-live="assertive">
-            <h2>Validation and Service Errors</h2>
-            <ul>
-              {errors.map((error, index) => (
-                <li key={`${error.code}-${index}`}>
-                  <strong>{error.code}:</strong> {error.message}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+            {lastCode && <p className="code-pill">Response Code: {lastCode}</p>}
 
-        <div className="preview-box" aria-live="polite">
-          <h2>Schema Preview</h2>
-          {schemaNodes.length === 0 ? (
-            <p className="muted">No schema nodes yet. Submit a valid JSON file to render preview.</p>
-          ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Path</th>
-                    <th>Field</th>
-                    <th>Type</th>
-                    <th>Array</th>
-                    <th>Object</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {schemaNodes.map((node, index) => (
-                    <tr key={`${node.path}-${index}`}>
-                      <td>{node.path}</td>
-                      <td>{node.fieldName}</td>
-                      <td>{node.inferredType}</td>
-                      <td>{node.isArray ? 'yes' : 'no'}</td>
-                      <td>{node.isObject ? 'yes' : 'no'}</td>
-                    </tr>
+            {errors.length > 0 && (
+              <div className="error-box" role="alert" aria-live="assertive">
+                <h2>Validation and Service Errors</h2>
+                <ul>
+                  {errors.map((error, index) => (
+                    <li key={`${error.code}-${index}`}>
+                      <strong>{error.code}:</strong> {error.message}
+                    </li>
                   ))}
-                </tbody>
-              </table>
+                </ul>
+              </div>
+            )}
+
+            <div className="preview-box" aria-live="polite">
+              <h2>Schema Preview</h2>
+              {schemaNodes.length === 0 ? (
+                <p className="muted">No schema nodes yet. Submit a valid JSON file to render preview.</p>
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Path</th>
+                        <th>Field</th>
+                        <th>Type</th>
+                        <th>Array</th>
+                        <th>Object</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {schemaNodes.map((node, index) => (
+                        <tr key={`${node.path}-${index}`}>
+                          <td>{node.path}</td>
+                          <td>{node.fieldName}</td>
+                          <td>{node.inferredType}</td>
+                          <td>{node.isArray ? 'yes' : 'no'}</td>
+                          <td>{node.isObject ? 'yes' : 'no'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </section>
-    </main>
+          </section>
+        </main>
+      ) : activeSection === 'gg' ? (
+        <GonfGenerator />
+      ) : (
+        <GonfGeneratorMockup />
+      )}
+    </>
   )
 }
 
