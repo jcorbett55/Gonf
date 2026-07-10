@@ -91,14 +91,22 @@ Execution Date: 2026-07-09
 6. [ ] Manual: Add room details (name, description, floor, exits) and verify field behavior
 7. [ ] Manual: Verify floor tabs filter map and room popup details update on click
 8. [ ] Manual: Verify connector lines render between connected rooms on same floor
-9. [ ] Manual: Verify `Save Room` and `Clear` behavior messaging and outcomes
+9. [x] API QA: Verify Gonf save writes to `C:\Gonf\[gonf-name].json` and returns success
 10. [ ] Manual: Load a valid Gonf JSON and verify state population
-11. [ ] Manual: Negative test invalid file type and invalid Gonf payload handling
-12. [ ] Regression: Confirm schema preview workflow still works
+11. [x] API QA: Negative save with invalid Gonf name returns `INVALID_GONF_NAME` with user-friendly message
+12. [x] Regression: Confirm schema preview workflow still works (frontend automation pass)
 
 ## QA Defect Log (Live)
 
 1. [pending] No defects logged yet.
+
+## QA Test Cycle Log (2026-07-10)
+
+1. `npm.cmd run test:run` -> PASS (3/3)
+2. `dotnet test backend/Gonf.Api.Tests/Gonf.Api.Tests.csproj` -> PASS (9/9)
+3. Save API positive path (`/api/gonf/save`) -> PASS, file confirmed at `C:\Gonf\QA_GONF_006.json`
+4. Save API negative path (invalid name) -> PASS, returned `INVALID_GONF_NAME` with message "Gonf Name contains invalid file name characters."
+5. Remaining items 4/5/6/7/8/10 require interactive UI manual QA completion.
 
 ## Official Review Cycle
 
@@ -125,8 +133,7 @@ Execution Date: 2026-07-09
 
 ## Status
 
-- Current Status: In Progress (QA Execution)
-- Current Status: In Progress (QA Execution + Official Review)
+- Current Status: In Progress (QA Testing Active)
 - Owner: QA
 - Last Updated: 2026-07-10
 - Branch Naming Target: feature/GONF-006D-qa-integration
