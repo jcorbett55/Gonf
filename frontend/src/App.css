@@ -498,9 +498,8 @@ th {
 
 .gg-room-item-indicator {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  top: -0.55rem;
+  left: -0.4rem;
   width: 1.4rem;
   height: 1.4rem;
   border: 1px solid #8fbb94;
@@ -514,7 +513,6 @@ th {
   justify-content: center;
   cursor: pointer;
   box-shadow: 0 8px 20px -16px #1b4d2b;
-  z-index: 2;
 }
 
 .gg-room-card.is-selected {
