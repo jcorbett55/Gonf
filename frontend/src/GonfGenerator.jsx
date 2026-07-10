@@ -4,6 +4,9 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5131
 const floors = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5]
 const planarDirections = ['north', 'east', 'south', 'west']
 const allDirections = ['north', 'east', 'south', 'west', 'up', 'down']
+const SECRET_STORAGE_NAME = 'Secret Storage'
+const SECRET_STORAGE_DESCRIPTION = 'Storage room for items that have no home.'
+const SECRET_STORAGE_FLOOR = -5
 const oppositeDirection = {
   north: 'south',
   east: 'west',
@@ -264,6 +267,104 @@ function applyReciprocalLinks(rooms, savedRoom) {
   return nextRooms
 }
 
+function isSecretStorageRoom(room) {
+  return String(room?.roomName ?? '').trim().toLowerCase() === SECRET_STORAGE_NAME.toLowerCase()
+}
+
+function createSecretStorageRoom(roomId) {
+  return {
+    roomId,
+    roomName: SECRET_STORAGE_NAME,
+    roomDescription: SECRET_STORAGE_DESCRIPTION,
+    roomFloor: SECRET_STORAGE_FLOOR,
+    exits: {
+      north: null,
+      east: null,
+      south: null,
+      west: null,
+      up: null,
+      down: null,
+    },
+  }
+}
+
+function ensureSecretStorageRoom(rooms) {
+  const existing = rooms.find((room) => isSecretStorageRoom(room))
+  if (existing) {
+    const normalizedExisting = {
+      ...existing,
+      roomName: SECRET_STORAGE_NAME,
+      roomDescription: SECRET_STORAGE_DESCRIPTION,
+      roomFloor: SECRET_STORAGE_FLOOR,
+      exits: {
+        north: null,
+        east: null,
+        south: null,
+        west: null,
+        up: null,
+        down: null,
+      },
+    }
+
+    const nextRooms = rooms.map((room) =>
+      room.roomId === existing.roomId ? normalizedExisting : room,
+    )
+    return {
+      rooms: stripSecretStorageExits(nextRooms),
+      roomId: existing.roomId,
+      created: false,
+    }
+  }
+
+  const nextRoomId = Math.max(0, ...rooms.map((room) => room.roomId)) + 1
+  const nextRooms = [...rooms, createSecretStorageRoom(nextRoomId)]
+  return {
+    rooms: stripSecretStorageExits(nextRooms),
+    roomId: nextRoomId,
+    created: true,
+  }
+}
+
+function stripSecretStorageExits(rooms) {
+  const secretStorageRoom = rooms.find((room) => isSecretStorageRoom(room))
+  if (!secretStorageRoom) {
+    return rooms
+  }
+
+  const secretRoomId = secretStorageRoom.roomId
+
+  return rooms.map((room) => {
+    if (room.roomId === secretRoomId) {
+      return {
+        ...room,
+        roomName: SECRET_STORAGE_NAME,
+        roomDescription: SECRET_STORAGE_DESCRIPTION,
+        roomFloor: SECRET_STORAGE_FLOOR,
+        exits: {
+          north: null,
+          east: null,
+          south: null,
+          west: null,
+          up: null,
+          down: null,
+        },
+      }
+    }
+
+    const nextExits = { ...room.exits }
+    for (const direction of allDirections) {
+      if (nextExits[direction] === secretRoomId) {
+        nextExits[direction] = null
+      }
+    }
+
+    return {
+      ...room,
+      exits: nextExits,
+    }
+  })
+}
+
 function mapRoomForState(rawRoom) {
   return {
     roomId: Number(rawRoom.roomId),
@@ -435,7 +536,16 @@ function buildItemSaveResult({ gonfName, itemForm, roomsById, currentItems, curr
     return { error: 'Item Name is required.' }
   }
 
-  const locationResult = getValidatedItemLocation(itemForm, roomsById)
+  const defaultLocation = itemForm.defaultItemLocation ?? ''
+  const effectiveLocationValue = itemForm.itemLocation === '' ? defaultLocation : itemForm.itemLocation
+
+  const locationResult = getValidatedItemLocation(
+    {
+      ...itemForm,
+      itemLocation: effectiveLocationValue,
+    },
+    roomsById,
+  )
   if (locationResult.error) {
     return { error: locationResult.error }
   }
@@ -490,7 +600,7 @@ function parseLoadedGonf(payload) {
     throw new Error('File is missing a valid rooms array.')
   }
 
-  const rooms = payload.rooms
+  const rawRooms = payload.rooms
     .map((rawRoom) => {
       const roomFloor = Number(rawRoom.roomFloor)
       if (!Number.isFinite(roomFloor) || !floors.includes(roomFloor)) {
@@ -502,6 +612,8 @@ function parseLoadedGonf(payload) {
       return mapRoomForState(rawRoom)
     })
     .filter(Boolean)
+
+  const rooms = stripSecretStorageExits(rawRooms)
 
   const items = Array.isArray(payload.items)
     ? payload.items.map((rawItem, index) => mapItemForState(rawItem, index)).filter(Boolean)
@@ -565,21 +677,36 @@ export default function GonfGenerator() {
   )
 
   const horizontalExitOptions = rooms
-    .filter((room) => room.roomFloor === selectedFloorNumber && room.roomId !== toNullableNumber(form.roomId))
+    .filter(
+      (room) =>
+        room.roomFloor === selectedFloorNumber &&
+        room.roomId !== toNullableNumber(form.roomId) &&
+        !isSecretStorageRoom(room),
+    )
     .map((room) => ({ value: room.roomId, label: room.roomName }))
 
   const upExitOptions =
     upTargetFloor === null
       ? []
       : rooms
-          .filter((room) => room.roomFloor === upTargetFloor && room.roomId !== toNullableNumber(form.roomId))
+          .filter(
+            (room) =>
+              room.roomFloor === upTargetFloor &&
+              room.roomId !== toNullableNumber(form.roomId) &&
+              !isSecretStorageRoom(room),
+          )
           .map((room) => ({ value: room.roomId, label: room.roomName }))
 
   const downExitOptions =
     downTargetFloor === null
       ? []
       : rooms
-          .filter((room) => room.roomFloor === downTargetFloor && room.roomId !== toNullableNumber(form.roomId))
+          .filter(
+            (room) =>
+              room.roomFloor === downTargetFloor &&
+              room.roomId !== toNullableNumber(form.roomId) &&
+              !isSecretStorageRoom(room),
+          )
           .map((room) => ({ value: room.roomId, label: room.roomName }))
 
   const selectedRoom = roomsById.get(selectedRoomId) ?? floorRooms[0] ?? null
@@ -773,7 +900,7 @@ export default function GonfGenerator() {
         },
       }
 
-      const nextRooms = applyReciprocalLinks(currentRooms, savedRoom)
+      const nextRooms = stripSecretStorageExits(applyReciprocalLinks(currentRooms, savedRoom))
 
       setSelectedRoomId(nextRoomId)
       setSelectedRoomPanelMode('room')
@@ -786,10 +913,33 @@ export default function GonfGenerator() {
   }
 
   const onSaveItem = () => {
+    let roomsForValidation = rooms
+    let defaultItemLocation = ''
+
+    if (itemForm.itemLocation === '') {
+      const ensuredSecretStorage = ensureSecretStorageRoom(rooms)
+      roomsForValidation = ensuredSecretStorage.rooms
+      defaultItemLocation = String(ensuredSecretStorage.roomId)
+
+      if (ensuredSecretStorage.created) {
+        setRooms(roomsForValidation)
+      } else {
+        const roomsDiffer = JSON.stringify(roomsForValidation) !== JSON.stringify(rooms)
+        if (roomsDiffer) {
+          setRooms(roomsForValidation)
+        }
+      }
+    }
+
+    const validationRoomsById = new Map(roomsForValidation.map((room) => [room.roomId, room]))
+
     const itemSaveResult = buildItemSaveResult({
       gonfName,
-      itemForm,
-      roomsById,
+      itemForm: {
+        ...itemForm,
+        defaultItemLocation,
+      },
+      roomsById: validationRoomsById,
       currentItems: items,
       currentSelectedRoomId: selectedRoomId,
     })
@@ -898,7 +1048,7 @@ export default function GonfGenerator() {
       <section className="panel intro-panel gg-intro">
         <p className="eyebrow">Gonf / Epic 006</p>
         <h1>Gonf Generator</h1>
-        <p>Create, load, and maintain Gonf room data. The map remains empty until rooms are saved or loaded.</p>
+        <p>Create, load, and maintain Gonf data. The Gonf will generate a map based on the rooms. Items can be generated and placed within the map. The map remains empty until rooms are saved or loaded.</p>
       </section>
 
       <section className="panel gg-workflow">
