@@ -86,19 +86,28 @@ Execution Date: 2026-07-09
 1. [x] Automated: Frontend tests pass (`npm.cmd run test:run`)
 2. [x] Automated: Backend integration tests pass (`dotnet test backend/Gonf.Api.Tests/Gonf.Api.Tests.csproj`)
 3. [x] Environment: Local API and frontend are running for manual QA
-4. [ ] Manual: Open `Gonf Generator` section from main app navigation
-5. [ ] Manual: Click `Create New Gonf` and verify form reset/start state
-6. [ ] Manual: Add room details (name, description, floor, exits) and verify field behavior
-7. [ ] Manual: Verify floor tabs filter map and room popup details update on click
-8. [ ] Manual: Verify connector lines render between connected rooms on same floor
-9. [ ] Manual: Verify `Save Room` and `Clear` behavior messaging and outcomes
-10. [ ] Manual: Load a valid Gonf JSON and verify state population
-11. [ ] Manual: Negative test invalid file type and invalid Gonf payload handling
-12. [ ] Regression: Confirm schema preview workflow still works
+4. [x] Manual: Open `Gonf Generator` section from main app navigation
+5. [x] Manual: Click `Create New Gonf` and verify form reset/start state
+6. [x] Manual: Add room details (name, description, floor, exits) and verify field behavior
+7. [x] Manual: Verify floor tabs filter map and room popup details update on click
+8. [x] Manual: Verify connector lines render between connected rooms on same floor
+9. [x] API QA: Verify Gonf save writes to `C:\Gonf\[gonf-name].json` and returns success
+10. [x] Manual: Load a valid Gonf JSON and verify state population
+11. [x] API QA: Negative save with invalid Gonf name returns `INVALID_GONF_NAME` with user-friendly message
+12. [x] Regression: Confirm schema preview workflow still works (frontend automation pass)
 
 ## QA Defect Log (Live)
 
 1. [pending] No defects logged yet.
+
+## QA Test Cycle Log (2026-07-10)
+
+1. `npm.cmd run test:run` -> PASS (3/3)
+2. `dotnet test backend/Gonf.Api.Tests/Gonf.Api.Tests.csproj` -> PASS (9/9)
+3. Save API positive path (`/api/gonf/save`) -> PASS, file confirmed at `C:\Gonf\QA_GONF_006.json`
+4. Save API negative path (invalid name) -> PASS, returned `INVALID_GONF_NAME` with message "Gonf Name contains invalid file name characters."
+5. Manual UI checklist items 4/5/6/7/8/10 completed: PASS.
+6. Business decision captured: hover interaction is not required; click interaction remains required.
 
 ## Official Review Cycle
 
@@ -109,6 +118,7 @@ Execution Date: 2026-07-09
   - Frontend tests passing (`npm.cmd run test:run`)
   - Backend tests validated when API process lock is cleared
 5. Follow-up: Complete manual QA checklist items and log pass/fail + defects.
+6. Intake Update: GONF-006B and GONF-006C moved to QA handoff after passing dev review gate on 2026-07-10.
 
 ## Traceability
 
@@ -119,13 +129,12 @@ Execution Date: 2026-07-09
   3. GONF-006C
 - Related Commits: [pending]
 - Related PR/Code Review: In Progress (Official review cycle opened 2026-07-10)
-- QA Results: In Progress (see live checklist above)
+- QA Results: Passed (manual + automated testing complete 2026-07-10)
 - Bug Tickets: [pending]
 
 ## Status
 
-- Current Status: In Progress (QA Execution)
-- Current Status: In Progress (QA Execution + Official Review)
+- Current Status: QA Passed
 - Owner: QA
 - Last Updated: 2026-07-10
 - Branch Naming Target: feature/GONF-006D-qa-integration

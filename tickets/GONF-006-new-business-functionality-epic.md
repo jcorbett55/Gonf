@@ -53,9 +53,9 @@ New business functionality has been requested and approved to precede remaining 
 ## Child Ticket Plan
 
 1. GONF-006A - Discovery and finalized business rules [Draft]
-2. GONF-006B - Core backend/API scope [In Progress (Dev)]
-3. GONF-006C - Core frontend/UI scope [In Progress (Dev)]
-4. GONF-006D - QA and integration coverage scope [In Progress (QA Execution)]
+2. GONF-006B - Core backend/API scope [QA Passed]
+3. GONF-006C - Core frontend/UI scope [QA Passed]
+4. GONF-006D - QA and integration coverage scope [QA Passed]
 
 ## Dependencies
 
