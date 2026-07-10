@@ -389,6 +389,10 @@ th {
   height: 1.05rem;
 }
 
+.gg-multi-select {
+  min-height: 7.5rem;
+}
+
 .gg-save-gonf-button {
   margin-left: auto;
   background: #1e5f44;
@@ -479,6 +483,17 @@ th {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.gg-room-select-button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  width: 100%;
+  min-height: 58px;
+  cursor: pointer;
 }
 
 .gg-room-item-indicator {

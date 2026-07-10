@@ -50,4 +50,17 @@ describe('App', () => {
     expect(screen.getByRole('tab', { name: 'Rooms' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Items' })).toBeInTheDocument()
   })
+
+  it('shows contents multi-select only when can hold items is checked', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Items' }))
+
+    expect(screen.queryByText('Contents')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Can Hold Items' }))
+
+    expect(screen.getByText('Contents')).toBeInTheDocument()
+  })
 })
