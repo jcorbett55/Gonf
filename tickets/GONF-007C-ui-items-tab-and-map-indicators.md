@@ -74,6 +74,7 @@ So I can build richer Gonf content and verify item placement quickly.
 
 1. Icon style and tooltip detail level for the single item indicator icon.
 2. Maximum number of items shown before truncation/scroll policy.
+3. Can the frontend developer provide the actual room item icon appearance or a mockup for the single item indicator?
 
 ## Architecture Notes
 
