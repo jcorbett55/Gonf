@@ -87,7 +87,7 @@ So new item features do not break current Gonf functionality.
 
 ## Status
 
-- Current Status: Draft
+- Current Status: Ready for QA
 - Owner: QA
 - Last Updated: 2026-07-10
 - Branch Naming Target: feature/GONF-007D-qa-items-integration

@@ -36,7 +36,7 @@ So I can build richer Gonf content and verify item placement quickly.
 1. Gonf controls appear in top controls section above `Rooms` and `Items` tabs.
 2. Existing room form remains functional under `Rooms` tab.
 3. Items tab form supports all defined item fields.
-4. `Location` is an optional dropdown populated with all rooms.
+4. `Location` is an optional dropdown populated with all rooms, regardless of floor.
 5. `Save Item` creates or updates item records.
 6. `Clear` in Items tab resets only item fields.
 7. Map room icon appears when room has one or more located items.
@@ -100,7 +100,7 @@ So I can build richer Gonf content and verify item placement quickly.
 
 ## Status
 
-- Current Status: Draft
+- Current Status: Ready for Dev
 - Owner: Frontend Developer
 - Last Updated: 2026-07-10
 - Branch Naming Target: feature/GONF-007C-ui-items-tab-map-indicators

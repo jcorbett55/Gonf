@@ -69,7 +69,7 @@ Business wants rooms to support item placement and room-level item visibility fr
 
 ## Status
 
-- Current Status: In Progress (BA Discovery)
+- Current Status: Ready for Dev
 - Owner: Business Analyst
 - Last Updated: 2026-07-10
 - Branch Naming Target: feature/GONF-007-epic-items-in-rooms
