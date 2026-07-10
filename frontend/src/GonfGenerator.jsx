@@ -347,12 +347,22 @@ function validateContentsSelection(itemForm, selectedContents, currentItems) {
   return hasInvalidContents ? 'One or more selected contents items are invalid.' : null
 }
 
+function itemNameById(itemsById, itemId) {
+  if (!itemId) {
+    return 'Unknown Item'
+  }
+
+  return itemsById.get(String(itemId))?.itemName ?? `Item ${itemId}`
+}
+
 function renderSelectedRoomPanel(
   selectedRoomPanelMode,
   selectedRoom,
   selectedRoomItems,
   roomsById,
+  itemsById,
   onSelectItemForEdit,
+  onSelectContainedItem,
 ) {
   if (selectedRoomPanelMode === 'items') {
     return (
@@ -373,6 +383,25 @@ function renderSelectedRoomPanel(
                   <strong>{item.itemName}</strong>
                   <span>{item.itemDescription || 'No description.'}</span>
                 </button>
+                {Array.isArray(item.itemContents) && item.itemContents.length > 0 && (
+                  <div className="gg-item-contents-block">
+                    <p className="gg-item-contents-title">Contents</p>
+                    <ul className="gg-item-contents-list">
+                      {item.itemContents.map((contentItemId) => (
+                        <li key={`${item.itemId}-${contentItemId}`}>
+                          <button
+                            type="button"
+                            className="gg-item-contents-button"
+                            onClick={() => onSelectContainedItem(String(contentItemId))}
+                            aria-label={`Edit contained item ${itemNameById(itemsById, contentItemId)}`}
+                          >
+                            {itemNameById(itemsById, contentItemId)}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -564,6 +593,14 @@ export default function GonfGenerator() {
     [rooms],
   )
 
+  const itemsById = useMemo(() => {
+    const map = new Map()
+    for (const item of items) {
+      map.set(String(item.itemId), item)
+    }
+    return map
+  }, [items])
+
   const contentsOptions = useMemo(
     () =>
       items
@@ -668,6 +705,16 @@ export default function GonfGenerator() {
     }
 
     setStatusMessage(`Loaded item ${item.itemName} into the item form.`)
+  }
+
+  const onSelectContainedItem = (itemId) => {
+    const containedItem = itemsById.get(String(itemId))
+    if (!containedItem) {
+      setStatusMessage('Could not load contained item details because the item was not found.')
+      return
+    }
+
+    onSelectItemForEdit(containedItem)
   }
 
   const onJumpToVerticalExit = (event, room, direction) => {
@@ -1279,7 +1326,9 @@ export default function GonfGenerator() {
                   selectedRoom,
                   selectedRoomItems,
                   roomsById,
+                  itemsById,
                   onSelectItemForEdit,
+                  onSelectContainedItem,
                 )}
               </aside>
             )}

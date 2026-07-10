@@ -601,6 +601,43 @@ th {
   background: #f2f7ff;
 }
 
+.gg-item-contents-block {
+  border-top: 1px solid #d8e4f6;
+  padding: 0.5rem 0.7rem 0.65rem;
+}
+
+.gg-item-contents-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #4d617e;
+}
+
+.gg-item-contents-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.gg-item-contents-button {
+  width: 100%;
+  border: 1px solid #c7d8f2;
+  border-radius: 8px;
+  background: #f7faff;
+  color: #274d77;
+  font: inherit;
+  text-align: left;
+  padding: 0.32rem 0.45rem;
+  cursor: pointer;
+}
+
+.gg-item-contents-button:hover {
+  background: #ecf3ff;
+}
+
 .gg-item-list strong {
   font-size: 0.98rem;
 }
