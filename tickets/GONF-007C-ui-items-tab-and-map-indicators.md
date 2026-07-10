@@ -103,4 +103,4 @@ So I can build richer Gonf content and verify item placement quickly.
 - Current Status: Ready for Dev
 - Owner: Frontend Developer
 - Last Updated: 2026-07-10
-- Branch Naming Target: feature/GONF-007C-ui-items-tab-map-indicators
+- Branch Naming Target: feature/GONF-007C-ui-items-tab-and-map-indicators

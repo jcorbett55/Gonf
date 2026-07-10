@@ -92,4 +92,4 @@ So item placement is preserved across sessions.
 - Current Status: Ready for Dev
 - Owner: Backend Developer
 - Last Updated: 2026-07-10
-- Branch Naming Target: feature/GONF-007B-backend-item-model-persistence
+- Branch Naming Target: feature/GONF-007B-backend-item-model-and-persistence
