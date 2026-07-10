@@ -18,8 +18,8 @@ Add item management UX to Gonf Generator, including an Items tab, room map item 
   - Location (optional roomId)
 4. `Clear` in Items tab resets only the item form.
 5. `Save Item` saves item state and updates map indicators.
-6. Rooms with at least one located item show an icon in the room square.
-7. Clicking a room item icon shows list of items in that room in the details area.
+6. Rooms with at least one located item show one icon in the room square.
+7. Clicking the room item icon causes the side panel to display the item(s) found in that room in place of the room information currently shown.
 8. `Save Gonf` persists both rooms and items via existing save flow.
 9. Item location is optional and, when provided, is selected from the available rooms dropdown.
 10. All rooms are available for item selection regardless of floor.
@@ -39,8 +39,8 @@ So I can build richer Gonf content and verify item placement quickly.
 4. `Location` is an optional dropdown populated with all rooms, regardless of floor.
 5. `Save Item` creates or updates item records.
 6. `Clear` in Items tab resets only item fields.
-7. Map room icon appears when room has one or more located items.
-8. Clicking room item icon renders item list for that room in details panel.
+7. Map room icon appears once when room has one or more located items.
+8. Clicking room item icon renders the room's item list in the side panel where room information is currently shown.
 9. `Save Gonf` payload includes both rooms and items.
 10. Load existing Gonf repopulates both rooms and items.
 11. UX messaging is clear for item save/load failures.
@@ -72,9 +72,8 @@ So I can build richer Gonf content and verify item placement quickly.
 
 ## Open Questions
 
-1. Icon style and tooltip detail level for item indicators.
+1. Icon style and tooltip detail level for the single item indicator icon.
 2. Maximum number of items shown before truncation/scroll policy.
-3. What should the room item indicator icon look like in the room display when one or more items are located in that room, and should it show a count, tooltip, or both?
 
 ## Architecture Notes
 
