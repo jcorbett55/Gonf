@@ -74,6 +74,7 @@ So I can build richer Gonf content and verify item placement quickly.
 
 1. Icon style and tooltip detail level for item indicators.
 2. Maximum number of items shown before truncation/scroll policy.
+3. What should the room item indicator icon look like in the room display when one or more items are located in that room, and should it show a count, tooltip, or both?
 
 ## Architecture Notes
 
