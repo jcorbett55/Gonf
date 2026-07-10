@@ -109,6 +109,7 @@ Execution Date: 2026-07-09
   - Frontend tests passing (`npm.cmd run test:run`)
   - Backend tests validated when API process lock is cleared
 5. Follow-up: Complete manual QA checklist items and log pass/fail + defects.
+6. Intake Update: GONF-006B and GONF-006C moved to QA handoff after passing dev review gate on 2026-07-10.
 
 ## Traceability
 
