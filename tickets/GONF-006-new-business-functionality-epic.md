@@ -44,6 +44,12 @@ New business functionality has been requested and approved to precede remaining 
   - "This method renders the Gonf map view and connection overlays."
 4. Avoid noisy comments that restate obvious syntax; prioritize comments that help reviewers and future maintainers.
 
+## Development Workflow Rule
+
+1. For every active story, all code changes must be done on a dedicated branch named after the ticket being worked.
+2. Example branch format: `feature/GONF-006B-backend-save-load`.
+3. Do not mix multiple story implementations on a single branch.
+
 ## Child Ticket Plan
 
 1. GONF-006A - Discovery and finalized business rules [Draft]
