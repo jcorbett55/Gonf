@@ -717,6 +717,9 @@ export default function GonfGenerator() {
               onChange={(event) => setGonfName(event.target.value)}
             />
           </label>
+          <button type="button" className="gg-save-gonf-top-button" onClick={onSaveGonf}>
+            Save Gonf
+          </button>
         </div>
 
         {statusMessage && <output className="status status-info">{statusMessage}</output>}
@@ -892,9 +895,6 @@ export default function GonfGenerator() {
               <button type="button" className="gg-clear-button" onClick={onClearForm}>
                 Clear
               </button>
-              <button type="button" className="gg-save-gonf-button" onClick={onSaveGonf}>
-                Save Gonf
-              </button>
             </div>
           </>
         ) : (
@@ -984,9 +984,6 @@ export default function GonfGenerator() {
               </button>
               <button type="button" className="gg-clear-button" onClick={onClearItemForm}>
                 Clear
-              </button>
-              <button type="button" className="gg-save-gonf-button" onClick={onSaveGonf}>
-                Save Gonf
               </button>
             </div>
           </>
