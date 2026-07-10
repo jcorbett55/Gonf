@@ -347,7 +347,13 @@ function validateContentsSelection(itemForm, selectedContents, currentItems) {
   return hasInvalidContents ? 'One or more selected contents items are invalid.' : null
 }
 
-function renderSelectedRoomPanel(selectedRoomPanelMode, selectedRoom, selectedRoomItems, roomsById) {
+function renderSelectedRoomPanel(
+  selectedRoomPanelMode,
+  selectedRoom,
+  selectedRoomItems,
+  roomsById,
+  onSelectItemForEdit,
+) {
   if (selectedRoomPanelMode === 'items') {
     return (
       <>
@@ -358,8 +364,15 @@ function renderSelectedRoomPanel(selectedRoomPanelMode, selectedRoom, selectedRo
           <ul className="gg-item-list">
             {selectedRoomItems.map((item) => (
               <li key={item.itemId}>
-                <strong>{item.itemName}</strong>
-                <span>{item.itemDescription || 'No description.'}</span>
+                <button
+                  type="button"
+                  className="gg-item-select-button"
+                  onClick={() => onSelectItemForEdit(item)}
+                  aria-label={`Edit ${item.itemName}`}
+                >
+                  <strong>{item.itemName}</strong>
+                  <span>{item.itemDescription || 'No description.'}</span>
+                </button>
               </li>
             ))}
           </ul>
@@ -629,6 +642,32 @@ export default function GonfGenerator() {
     setSelectedRoomId(room.roomId)
     setSelectedRoomPanelMode('items')
     setStatusMessage(`Showing items found in ${room.roomName}.`)
+  }
+
+  const onSelectItemForEdit = (item) => {
+    const itemLocationId = toNullableNumber(item.itemLocation)
+    const targetRoom = itemLocationId ? roomsById.get(itemLocationId) : null
+
+    setActiveTab('items')
+    setItemForm({
+      itemId: item.itemId,
+      itemName: item.itemName,
+      itemWeight: item.itemWeight ?? '',
+      itemDescription: item.itemDescription,
+      itemValue: item.itemValue ?? '',
+      canHoldItems: Boolean(item.canHoldItems),
+      canBeCarried: Boolean(item.canBeCarried),
+      itemLocation: item.itemLocation ?? '',
+      itemContents: Array.isArray(item.itemContents) ? item.itemContents.map(String) : [],
+    })
+
+    if (targetRoom) {
+      setSelectedRoomId(targetRoom.roomId)
+      setActiveFloor(targetRoom.roomFloor)
+      setSelectedRoomPanelMode('items')
+    }
+
+    setStatusMessage(`Loaded item ${item.itemName} into the item form.`)
   }
 
   const onJumpToVerticalExit = (event, room, direction) => {
@@ -1235,7 +1274,13 @@ export default function GonfGenerator() {
 
             {selectedRoom && (
               <aside className="gg-room-popover" aria-live="polite">
-                {renderSelectedRoomPanel(selectedRoomPanelMode, selectedRoom, selectedRoomItems, roomsById)}
+                {renderSelectedRoomPanel(
+                  selectedRoomPanelMode,
+                  selectedRoom,
+                  selectedRoomItems,
+                  roomsById,
+                  onSelectItemForEdit,
+                )}
               </aside>
             )}
           </div>

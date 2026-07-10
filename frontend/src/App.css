@@ -580,9 +580,25 @@ th {
   border: 1px solid var(--edge);
   border-radius: 10px;
   background: #fbfcff;
+  padding: 0;
+}
+
+.gg-item-select-button {
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  width: 100%;
   padding: 0.65rem 0.7rem;
   display: grid;
   gap: 0.25rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gg-item-select-button:hover {
+  background: #f2f7ff;
 }
 
 .gg-item-list strong {
