@@ -40,7 +40,7 @@ So that I can understand and edit room navigation structure quickly.
 7. On successful save, form clears and map refreshes from latest Gonf data.
 8. Lower map area provides 10 floor tabs (-5, -4, -3, -2, -1, 1, 2, 3, 4, 5) and renders only rooms for selected floor.
 9. Room visualization uses square nodes with room names and connector lines for exits.
-10. Hover/click on room shows popup with name, description, and exits.
+10. Click on room shows popup with name, description, and exits.
 
 ## Edge Cases and Error Handling
 
@@ -93,7 +93,7 @@ So that I can understand and edit room navigation structure quickly.
 ## QA Notes and Test Intent
 
 1. Validate create/load/save/clear flows.
-2. Validate tab-based floor filtering and room popup details.
+2. Validate tab-based floor filtering and click-selected room popup details.
 3. Validate accessibility for form, tabs, and popups.
 4. Validate resilience to invalid or partial data.
 
@@ -106,12 +106,12 @@ So that I can understand and edit room navigation structure quickly.
   3. GONF-006D
 - Related Commits: [pending]
 - Related PR/Code Review: Passed (Dev review gate 2026-07-10)
-- QA Results: In Progress (QA testing active 2026-07-10)
+- QA Results: Passed (manual + automated testing complete 2026-07-10)
 - Bug Tickets: [pending]
 
 ## Status
 
-- Current Status: Ready for QA
+- Current Status: QA Passed
 - Owner: Frontend Developer
 - Last Updated: 2026-07-10
 - Branch Naming Target: feature/GONF-006C-ui-gonf-generator
