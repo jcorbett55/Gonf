@@ -24,6 +24,9 @@ So new item features do not break current Gonf functionality.
 4. Negative-path tests cover invalid item payloads and invalid location references.
 5. Regression confirms room editing, room exits, and map rendering remain functional.
 6. QA evidence includes pass/fail cycles and defect references.
+7. QA verifies item location is optional, but when set must point to a valid room.
+8. QA verifies all rooms are available in the item location dropdown regardless of floor.
+9. QA verifies an item cannot be assigned to more than one room.
 
 ## Edge Cases and Error Handling
 
@@ -31,6 +34,8 @@ So new item features do not break current Gonf functionality.
 2. Item with long description and large numeric values.
 3. Legacy Gonf file with no items.
 4. Item points to deleted/invalid room id.
+5. Item has no room assignment.
+6. Item payload attempts multiple room assignments.
 
 ## Non-Functional Requirements
 
@@ -66,6 +71,7 @@ So new item features do not break current Gonf functionality.
 2. Verify icon click shows room-specific item list in details area.
 3. Verify Save Gonf writes rooms + items in one payload.
 4. Verify no regressions in prior GONF-006 behaviors.
+5. Verify item location dropdown lists all rooms and does not filter by floor.
 
 ## Traceability
 

@@ -15,12 +15,15 @@ Add item management UX to Gonf Generator, including an Items tab, room map item 
    - Value
    - Can Hold Items (boolean)
    - Can Be Carried (boolean)
-   - Location (roomId)
+  - Location (optional roomId)
 4. `Clear` in Items tab resets only the item form.
 5. `Save Item` saves item state and updates map indicators.
 6. Rooms with at least one located item show an icon in the room square.
 7. Clicking a room item icon shows list of items in that room in the details area.
 8. `Save Gonf` persists both rooms and items via existing save flow.
+9. Item location is optional and, when provided, is selected from the available rooms dropdown.
+10. All rooms are available for item selection regardless of floor.
+11. An item can be assigned to only one room.
 
 ## User Story
 
@@ -33,18 +36,19 @@ So I can build richer Gonf content and verify item placement quickly.
 1. Gonf controls appear in top controls section above `Rooms` and `Items` tabs.
 2. Existing room form remains functional under `Rooms` tab.
 3. Items tab form supports all defined item fields.
-4. `Save Item` creates or updates item records.
-5. `Clear` in Items tab resets only item fields.
-6. Map room icon appears when room has one or more located items.
-7. Clicking room item icon renders item list for that room in details panel.
-8. `Save Gonf` payload includes both rooms and items.
-9. Load existing Gonf repopulates both rooms and items.
-10. UX messaging is clear for item save/load failures.
+4. `Location` is an optional dropdown populated with all rooms.
+5. `Save Item` creates or updates item records.
+6. `Clear` in Items tab resets only item fields.
+7. Map room icon appears when room has one or more located items.
+8. Clicking room item icon renders item list for that room in details panel.
+9. `Save Gonf` payload includes both rooms and items.
+10. Load existing Gonf repopulates both rooms and items.
+11. UX messaging is clear for item save/load failures.
 
 ## Edge Cases and Error Handling
 
 1. Item saved without valid location.
-2. Location references room on different floor (still valid but visible by room).
+2. Item saved with no location selected.
 3. Multiple items in the same room.
 4. Item icon click when room has zero items.
 

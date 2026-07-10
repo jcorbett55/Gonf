@@ -8,7 +8,9 @@ Extend backend save/load behavior to persist item data with Gonf JSON while pres
 
 1. Save Gonf writes both rooms and items into `[gonf-name].json` under `C:\Gonf`.
 2. Save creates `C:\Gonf` if it does not exist.
-3. Item location must reference a valid roomId when provided.
+3. Item location is optional.
+4. If item location is provided, it must reference a valid roomId.
+5. An item may be assigned to at most one room.
 4. Validation errors return machine-readable code plus user-facing guidance.
 
 ## User Story
@@ -27,13 +29,17 @@ So item placement is preserved across sessions.
 6. Save success response includes user-facing confirmation.
 7. Error handling includes user-friendly messages for file-system failures.
 8. Automated tests cover positive/negative item save/load paths.
+9. Payload validation allows items with no room assignment.
+10. Payload validation rejects items assigned to multiple rooms or multiple room ids.
 
 ## Edge Cases and Error Handling
 
 1. Item location roomId does not exist.
 2. Item payload present but missing required fields.
 3. Invalid numeric values for weight or value.
-4. Save fails because access denied or disk full.
+4. Item has no room assignment.
+5. Item is sent with more than one room assignment.
+6. Save fails because access denied or disk full.
 
 ## Non-Functional Requirements
 

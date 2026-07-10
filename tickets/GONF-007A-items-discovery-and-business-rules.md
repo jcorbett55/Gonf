@@ -6,10 +6,12 @@ Define the item model and interaction rules so implementation is unambiguous and
 
 ## Business Rules
 
-1. An item has: name, weight, description, value, can hold items (boolean), can be carried (boolean), and location (roomId).
-2. `location` references a valid existing roomId.
-3. Item records are part of a Gonf and persist with rooms.
-4. Item list shown for a room is derived from item location.
+1. An item has: name, weight, description, value, can hold items (boolean), can be carried (boolean), and optional location (roomId).
+2. `location` is optional.
+3. If `location` is provided, it must reference a valid existing roomId.
+4. An item can be assigned to zero or one room only.
+5. Item records are part of a Gonf and persist with rooms.
+6. Item list shown for a room is derived from item location.
 
 ## User Story
 
@@ -20,9 +22,9 @@ So that backend and frontend teams implement the same rules.
 ## Acceptance Criteria
 
 1. Item field definitions are finalized with types and requiredness.
-2. Location behavior is finalized when roomId is missing/invalid.
+2. Location behavior is finalized for optional room assignment and invalid roomId handling.
 3. Save/load JSON contract includes items alongside rooms.
-4. UI behavior for map item indicator and click-to-list is finalized.
+4. UI behavior for room dropdown selection, map item indicator, and click-to-list is finalized.
 5. Child tickets 007B/007C/007D inherit finalized rules.
 
 ## Edge Cases and Error Handling
@@ -53,8 +55,7 @@ So that backend and frontend teams implement the same rules.
 ## Open Questions
 
 1. Are item names unique globally in a Gonf or only by room?
-2. Should roomId be required for save or allow unplaced items?
-3. Numeric bounds for `weight` and `value`.
+2. Numeric bounds for `weight` and `value`.
 
 ## Architecture Notes
 
