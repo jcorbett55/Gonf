@@ -45,6 +45,12 @@ function createEmptyItemForm() {
   }
 }
 
+function createEmptyCharacterForm() {
+  return {
+    characterName: '',
+  }
+}
+
 function toNullableNumber(value) {
   if (value === '' || value === null || value === undefined) {
     return null
@@ -632,6 +638,7 @@ export default function GonfGenerator() {
   const [items, setItems] = useState([])
   const [form, setForm] = useState(createEmptyForm())
   const [itemForm, setItemForm] = useState(createEmptyItemForm())
+  const [characterForm, setCharacterForm] = useState(createEmptyCharacterForm())
   const [activeTab, setActiveTab] = useState('rooms')
   const [activeFloor, setActiveFloor] = useState(1)
   const [selectedRoomId, setSelectedRoomId] = useState(null)
@@ -744,6 +751,10 @@ export default function GonfGenerator() {
     setItemForm((current) => ({ ...current, [field]: value }))
   }
 
+  const onCharacterFormChange = (field, value) => {
+    setCharacterForm((current) => ({ ...current, [field]: value }))
+  }
+
   const onCanHoldItemsChange = (checked) => {
     setItemForm((current) => ({
       ...current,
@@ -764,6 +775,7 @@ export default function GonfGenerator() {
     setItems([])
     setForm(createEmptyForm())
     setItemForm(createEmptyItemForm())
+    setCharacterForm(createEmptyCharacterForm())
     setActiveTab('rooms')
     setSelectedRoomId(null)
     setSelectedRoomPanelMode('room')
@@ -1034,6 +1046,7 @@ export default function GonfGenerator() {
       setItems(loaded.items)
       setForm(createEmptyForm())
       setItemForm(createEmptyItemForm())
+      setCharacterForm(createEmptyCharacterForm())
       setSelectedRoomPanelMode('room')
       setSelectedRoomId(loaded.rooms[0]?.roomId ?? null)
       setActiveFloor(loaded.rooms[0]?.roomFloor ?? 1)
@@ -1102,10 +1115,19 @@ export default function GonfGenerator() {
           >
             Items
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'character'}
+            className={activeTab === 'character' ? 'is-active' : ''}
+            onClick={() => setActiveTab('character')}
+          >
+            Character
+          </button>
         </div>
 
-        {activeTab === 'rooms' ? (
-          <>
+        {activeTab === 'rooms' && (
+          <div className="gg-tab-content">
             <div className="gg-form-grid">
               <input type="hidden" name="roomId" value={form.roomId ?? ''} />
 
@@ -1255,9 +1277,11 @@ export default function GonfGenerator() {
                 Clear
               </button>
             </div>
-          </>
-        ) : (
-          <>
+          </div>
+        )}
+
+        {activeTab === 'items' && (
+          <div className="gg-tab-content">
             <div className="gg-item-form-grid">
               <input type="hidden" name="itemId" value={itemForm.itemId ?? ''} />
 
@@ -1365,7 +1389,21 @@ export default function GonfGenerator() {
                 Clear
               </button>
             </div>
-          </>
+          </div>
+        )}
+
+        {activeTab === 'character' && (
+          <div className="gg-item-form-grid">
+            <label className="gg-field gg-wide">
+              <span>Character Name</span>
+              <input
+                type="text"
+                placeholder="Character name"
+                value={characterForm.characterName}
+                onChange={(event) => onCharacterFormChange('characterName', event.target.value)}
+              />
+            </label>
+          </div>
         )}
       </section>
 

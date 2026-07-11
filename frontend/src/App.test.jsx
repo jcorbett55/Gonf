@@ -42,13 +42,23 @@ describe('App', () => {
     fetchSpy.mockRestore()
   })
 
-  it('shows room and item tabs in the Gonf Generator section', () => {
+  it('shows room, item, and character tabs in the Gonf Generator section', () => {
     render(<App />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
 
     expect(screen.getByRole('tab', { name: 'Rooms' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Items' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Character' })).toBeInTheDocument()
+  })
+
+  it('shows character name field when character tab is selected', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Character' }))
+
+    expect(screen.getByLabelText('Character Name')).toBeInTheDocument()
   })
 
   it('shows contents multi-select only when can hold items is checked', () => {
