@@ -52,13 +52,28 @@ describe('App', () => {
     expect(screen.getByRole('tab', { name: 'Character' })).toBeInTheDocument()
   })
 
-  it('shows character name field when character tab is selected', () => {
+  it('shows character fields and actions when character tab is selected', () => {
     render(<App />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
     fireEvent.click(screen.getByRole('tab', { name: 'Character' }))
 
     expect(screen.getByLabelText('Character Name')).toBeInTheDocument()
+    expect(screen.getByLabelText('Description')).toBeInTheDocument()
+    expect(screen.getByRole('combobox')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Wanderer' })).toBeInTheDocument()
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save Character' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument()
+  })
+
+  it('does not list Secret Storage as a manual character location', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Character' }))
+
+    expect(screen.queryByRole('option', { name: 'Secret Storage' })).not.toBeInTheDocument()
   })
 
   it('shows contents multi-select only when can hold items is checked', () => {
@@ -123,6 +138,45 @@ describe('App', () => {
     } finally {
       fetchSpy.mockRestore()
     }
+  })
+
+  it('defaults character location to Secret Storage and shows map character indicator', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+    fireEvent.change(screen.getByLabelText('Gonf Name'), { target: { value: 'TestGonf' } })
+    fireEvent.click(screen.getByRole('tab', { name: 'Character' }))
+    fireEvent.change(screen.getByLabelText('Character Name'), { target: { value: 'Ava' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Character' }))
+
+    expect(screen.getByText(/Saved character Ava to Secret Storage/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'View characters found in Secret Storage' })).toBeInTheDocument()
+  })
+
+  it('removes contained items from Secret Storage room-level item listing', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+    fireEvent.change(screen.getByLabelText('Gonf Name'), { target: { value: 'TestGonf' } })
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Items' }))
+    fireEvent.change(screen.getByLabelText('Item Name'), { target: { value: 'Loose Key' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Item' }))
+
+    fireEvent.change(screen.getByLabelText('Item Name'), { target: { value: 'Satchel' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Can Hold Items' }))
+    const contentsList = screen.getByRole('listbox')
+    const looseKeyOption = screen.getByRole('option', { name: 'Loose Key' })
+    looseKeyOption.selected = true
+    fireEvent.change(contentsList)
+    fireEvent.click(screen.getByRole('button', { name: 'Save Item' }))
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Floor -5' }))
+    fireEvent.click(screen.getByRole('button', { name: 'View items found in Secret Storage' }))
+
+    expect(screen.queryByRole('button', { name: 'Edit Loose Key' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit Satchel' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit contained item Loose Key' })).toBeInTheDocument()
   })
 
   it('auto-creates Secret Storage for unassigned items and blocks room-form edits', () => {
