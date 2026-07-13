@@ -53,6 +53,10 @@ function createEmptyItemForm() {
 function createEmptyCharacterForm() {
   return {
     characterName: '',
+    characterDescription: '',
+    characterLocation: '',
+    characterWanderer: false,
+    characterContains: [],
   }
 }
 
@@ -501,6 +505,35 @@ function mapItemForState(rawItem, index) {
   }
 }
 
+function mapCharacterForState(rawCharacter, index) {
+  const characterLocation = rawCharacter.location ?? rawCharacter.characterLocation ?? rawCharacter.roomId ?? ''
+  const characterContainsSource = Array.isArray(rawCharacter.contains) ? rawCharacter.contains : []
+
+  const characterContains = characterContainsSource
+    .map((containedItem) => {
+      if (containedItem === null || containedItem === undefined) {
+        return null
+      }
+
+      if (typeof containedItem === 'object') {
+        const nestedId = containedItem.itemId ?? containedItem.id
+        return nestedId === null || nestedId === undefined ? null : String(nestedId)
+      }
+
+      return String(containedItem)
+    })
+    .filter(Boolean)
+
+  return {
+    characterId: Number(rawCharacter.characterId ?? rawCharacter.id ?? index + 1),
+    characterName: String(rawCharacter.characterName ?? rawCharacter.name ?? ''),
+    characterDescription: String(rawCharacter.description ?? rawCharacter.characterDescription ?? ''),
+    characterLocation: characterLocation === null || characterLocation === undefined ? '' : String(characterLocation),
+    characterWanderer: Boolean(rawCharacter.wanderer ?? false),
+    characterContains,
+  }
+}
+
 function getValidatedItemLocation(itemForm, roomsById) {
   const itemLocation = itemForm.itemLocation === '' ? null : toNullableNumber(itemForm.itemLocation)
   if (itemForm.itemLocation !== '' && (itemLocation === null || !roomsById.has(itemLocation))) {
@@ -706,10 +739,15 @@ function parseLoadedGonf(payload) {
     ? payload.items.map((rawItem, index) => mapItemForState(rawItem, index)).filter(Boolean)
     : []
 
+  const characters = Array.isArray(payload.characters)
+    ? payload.characters.map((rawCharacter, index) => mapCharacterForState(rawCharacter, index)).filter(Boolean)
+    : []
+
   return {
     gonfName: String(payload.gonfName ?? ''),
     rooms,
     items,
+    characters,
   }
 }
 
@@ -717,6 +755,7 @@ export default function GonfGenerator() {
   const [gonfName, setGonfName] = useState('')
   const [rooms, setRooms] = useState([])
   const [items, setItems] = useState([])
+  const [characters, setCharacters] = useState([])
   const [form, setForm] = useState(createEmptyForm())
   const [itemForm, setItemForm] = useState(createEmptyItemForm())
   const [characterForm, setCharacterForm] = useState(createEmptyCharacterForm())
@@ -804,7 +843,10 @@ export default function GonfGenerator() {
   )
 
   const roomOptions = useMemo(
-    () => rooms.map((room) => ({ value: room.roomId, label: room.roomName })),
+    () =>
+      rooms
+        .filter((room) => !isSystemManagedRoom(room))
+        .map((room) => ({ value: room.roomId, label: room.roomName })),
     [rooms],
   )
 
@@ -854,6 +896,7 @@ export default function GonfGenerator() {
     setGonfName('')
     setRooms([])
     setItems([])
+    setCharacters([])
     setForm(createEmptyForm())
     setItemForm(createEmptyItemForm())
     setCharacterForm(createEmptyCharacterForm())
@@ -1080,6 +1123,22 @@ export default function GonfGenerator() {
       return
     }
 
+    const draftCharacters = characterForm.characterName.trim()
+      ? [
+          {
+            characterId: 1,
+            characterName: characterForm.characterName.trim(),
+            characterDescription: characterForm.characterDescription.trim(),
+            characterLocation:
+              characterForm.characterLocation === '' ? null : Number(characterForm.characterLocation),
+            characterWanderer: Boolean(characterForm.characterWanderer),
+            characterContains: Array.isArray(characterForm.characterContains)
+              ? characterForm.characterContains.map(Number).filter((itemId) => Number.isFinite(itemId))
+              : [],
+          },
+        ]
+      : []
+
     const savePayload = {
       gonfName: gonfName.trim(),
       rooms: rooms.map((room) => ({
@@ -1109,6 +1168,16 @@ export default function GonfGenerator() {
         location: item.itemLocation === '' ? null : Number(item.itemLocation),
         contents: Array.isArray(item.itemContents)
           ? item.itemContents.map(Number).filter((itemId) => Number.isFinite(itemId))
+          : [],
+      })),
+      characters: (characters.length > 0 ? characters : draftCharacters).map((character, index) => ({
+        characterId: character.characterId ?? index + 1,
+        characterName: character.characterName,
+        description: character.characterDescription ?? '',
+        location: character.characterLocation === '' || character.characterLocation === null ? null : Number(character.characterLocation),
+        wanderer: Boolean(character.characterWanderer),
+        contains: Array.isArray(character.characterContains)
+          ? character.characterContains.map(Number).filter((itemId) => Number.isFinite(itemId))
           : [],
       })),
     }
@@ -1152,9 +1221,20 @@ export default function GonfGenerator() {
       setGonfName(inferredName)
       setRooms(loaded.rooms)
       setItems(loaded.items)
+      setCharacters(loaded.characters)
       setForm(createEmptyForm())
       setItemForm(createEmptyItemForm())
-      setCharacterForm(createEmptyCharacterForm())
+      setCharacterForm(
+        loaded.characters[0]
+          ? {
+              characterName: loaded.characters[0].characterName,
+              characterDescription: loaded.characters[0].characterDescription,
+              characterLocation: loaded.characters[0].characterLocation,
+              characterWanderer: loaded.characters[0].characterWanderer,
+              characterContains: loaded.characters[0].characterContains,
+            }
+          : createEmptyCharacterForm(),
+      )
       setSelectedRoomPanelMode('room')
       setSelectedRoomId(loaded.rooms[0]?.roomId ?? null)
       setActiveFloor(loaded.rooms[0]?.roomFloor ?? 1)
@@ -1465,7 +1545,7 @@ export default function GonfGenerator() {
                     </option>
                   ))}
                 </select>
-                <small>All rooms are available regardless of floor.</small>
+                <small>Assignable rooms are available regardless of floor.</small>
               </label>
 
               {itemForm.canHoldItems && (

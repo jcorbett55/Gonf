@@ -210,6 +210,27 @@ static async Task<IResult> HandleSaveGonfRequestAsync(SaveGonfRequest request, I
                 down = room.Exits.Down,
             },
         }),
+        items = (request.Items ?? Array.Empty<SaveGonfItemRequest>()).Select(item => new
+        {
+            itemId = item.ItemId,
+            itemName = item.ItemName,
+            itemWeight = item.ItemWeight,
+            itemDescription = item.ItemDescription,
+            itemValue = item.ItemValue,
+            canHoldItems = item.CanHoldItems,
+            canBeCarried = item.CanBeCarried,
+            location = item.Location,
+            contents = item.Contents,
+        }),
+        characters = (request.Characters ?? Array.Empty<SaveGonfCharacterRequest>()).Select(character => new
+        {
+            characterId = character.CharacterId,
+            characterName = character.CharacterName,
+            description = character.Description,
+            location = character.Location,
+            wanderer = character.Wanderer,
+            contains = character.Contains,
+        }),
     };
 
     try
@@ -295,16 +316,4 @@ static bool IsDiskFull(IOException exception)
     return hResult == 0x80070070 || hResult == 0x80070027;
 }
 
-public sealed record SaveGonfRequest(string GonfName, IReadOnlyList<SaveGonfRoomRequest> Rooms);
-
-public sealed record SaveGonfRoomRequest(
-    int RoomId,
-    string RoomName,
-    string RoomDescription,
-    int RoomFloor,
-    SaveGonfExitsRequest Exits
-);
-
-public sealed record SaveGonfExitsRequest(int? North, int? East, int? South, int? West, int? Up, int? Down);
-
-public partial class Program;
+public partial class Program { }

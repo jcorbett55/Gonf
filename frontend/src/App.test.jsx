@@ -74,6 +74,57 @@ describe('App', () => {
     expect(screen.getByText('Contents')).toBeInTheDocument()
   })
 
+  it('does not list Secret Storage as an assignable item location', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Items' }))
+
+    expect(screen.queryByRole('option', { name: 'Secret Storage' })).not.toBeInTheDocument()
+  })
+
+  it('sends items and characters in the Save Gonf payload', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        code: 200,
+        success: true,
+        errors: [],
+        data: {
+          path: 'C:\\Gonf\\TestGonf.json',
+          message: 'Saved Gonf to C:\\Gonf\\TestGonf.json.',
+        },
+      }),
+    })
+
+    render(<App />)
+
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+      fireEvent.change(screen.getByLabelText('Gonf Name'), { target: { value: 'TestGonf' } })
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Items' }))
+      fireEvent.change(screen.getByLabelText('Item Name'), { target: { value: 'Loose Key' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Save Item' }))
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Character' }))
+      fireEvent.change(screen.getByLabelText('Character Name'), { target: { value: 'Ava' } })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save Gonf' }))
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+
+      const requestBody = JSON.parse(fetchSpy.mock.calls[0][1].body)
+      expect(requestBody.items).toHaveLength(1)
+      expect(requestBody.items[0].itemName).toBe('Loose Key')
+      expect(requestBody.characters).toHaveLength(1)
+      expect(requestBody.characters[0].characterName).toBe('Ava')
+    } finally {
+      fetchSpy.mockRestore()
+    }
+  })
+
   it('auto-creates Secret Storage for unassigned items and blocks room-form edits', () => {
     render(<App />)
 
