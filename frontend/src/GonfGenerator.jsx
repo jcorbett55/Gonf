@@ -4,6 +4,14 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5131
 const floors = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5]
 const planarDirections = ['north', 'east', 'south', 'west']
 const allDirections = ['north', 'east', 'south', 'west', 'up', 'down']
+const SYSTEM_MANAGED_ROOMS = [
+  {
+    key: 'secret-storage',
+    name: 'Secret Storage',
+    description: 'Storage room for items that have no home.',
+    floor: -5,
+  },
+]
 const oppositeDirection = {
   north: 'south',
   east: 'west',
@@ -25,6 +33,26 @@ function createEmptyForm() {
     westExit: '',
     upExit: '',
     downExit: '',
+  }
+}
+
+function createEmptyItemForm() {
+  return {
+    itemId: null,
+    itemName: '',
+    itemWeight: '',
+    itemDescription: '',
+    itemValue: '',
+    canHoldItems: false,
+    canBeCarried: false,
+    itemLocation: '',
+    itemContents: [],
+  }
+}
+
+function createEmptyCharacterForm() {
+  return {
+    characterName: '',
   }
 }
 
@@ -123,6 +151,42 @@ function findNearestOpenSlot(occupied, startX, startY) {
   return { x: startX, y: startY }
 }
 
+function queueDirectionalNeighbors(room, roomById, placed, queue, slot, directionOffset) {
+  for (const direction of planarDirections) {
+    const targetId = room.exits[direction]
+    if (!targetId || placed.has(targetId) || !roomById.has(targetId)) {
+      continue
+    }
+
+    const delta = directionOffset[direction]
+    queue.push({ roomId: targetId, x: slot.x + delta.x, y: slot.y + delta.y })
+  }
+}
+
+function placeDirectionalComponent(seedRoomId, startX, roomById, occupied, placed, directionOffset) {
+  const queue = [{ roomId: seedRoomId, x: startX, y: 0 }]
+
+  while (queue.length > 0) {
+    const next = queue.shift()
+    if (!next || placed.has(next.roomId)) {
+      continue
+    }
+
+    const room = roomById.get(next.roomId)
+    if (!room) {
+      continue
+    }
+
+    const slot = findNearestOpenSlot(occupied, next.x, next.y)
+    occupied.add(`${slot.x},${slot.y}`)
+    placed.set(room.roomId, slot)
+
+    queueDirectionalNeighbors(room, roomById, placed, queue, slot, directionOffset)
+  }
+
+  return startX + 6
+}
+
 function buildDirectionalFloorLayout(floorRooms) {
   if (floorRooms.length === 0) {
     return []
@@ -146,36 +210,14 @@ function buildDirectionalFloorLayout(floorRooms) {
       continue
     }
 
-    const queue = [{ roomId: seed.roomId, x: componentStartX, y: 0 }]
-
-    while (queue.length > 0) {
-      const next = queue.shift()
-      if (!next || placed.has(next.roomId)) {
-        continue
-      }
-
-      const room = roomById.get(next.roomId)
-      if (!room) {
-        continue
-      }
-
-      const slot = findNearestOpenSlot(occupied, next.x, next.y)
-      const key = `${slot.x},${slot.y}`
-      occupied.add(key)
-      placed.set(room.roomId, slot)
-
-      for (const direction of planarDirections) {
-        const targetId = room.exits[direction]
-        if (!targetId || placed.has(targetId) || !roomById.has(targetId)) {
-          continue
-        }
-
-        const delta = directionOffset[direction]
-        queue.push({ roomId: targetId, x: slot.x + delta.x, y: slot.y + delta.y })
-      }
-    }
-
-    componentStartX += 6
+    componentStartX = placeDirectionalComponent(
+      seed.roomId,
+      componentStartX,
+      roomById,
+      occupied,
+      placed,
+      directionOffset,
+    )
   }
 
   const placedValues = Array.from(placed.values())
@@ -236,20 +278,407 @@ function applyReciprocalLinks(rooms, savedRoom) {
   return nextRooms
 }
 
-function mapRoomForState(rawRoom) {
+function normalizeRoomName(value) {
+  return String(value ?? '').trim().toLowerCase()
+}
+
+function getSystemManagedRoomDefinitionByName(roomName) {
+  return SYSTEM_MANAGED_ROOMS.find((room) => normalizeRoomName(room.name) === normalizeRoomName(roomName)) ?? null
+}
+
+function getSystemManagedRoomDefinitionByKey(roomKey) {
+  return SYSTEM_MANAGED_ROOMS.find((room) => room.key === roomKey) ?? null
+}
+
+function mapRawRoomExits(rawRoom) {
   return {
+    north: toNullableNumber(rawRoom.exits?.north ?? rawRoom.northExit),
+    east: toNullableNumber(rawRoom.exits?.east ?? rawRoom.eastExit),
+    south: toNullableNumber(rawRoom.exits?.south ?? rawRoom.southExit),
+    west: toNullableNumber(rawRoom.exits?.west ?? rawRoom.westExit),
+    up: toNullableNumber(rawRoom.exits?.up ?? rawRoom.upExit),
+    down: toNullableNumber(rawRoom.exits?.down ?? rawRoom.downExit),
+  }
+}
+
+function hasNoExits(exits) {
+  if (!exits) {
+    return true
+  }
+
+  return allDirections.every((direction) => exits[direction] === null)
+}
+
+function getLegacySystemManagedRoomDefinition(room) {
+  const matchedDefinition = getSystemManagedRoomDefinitionByName(room?.roomName)
+  if (!matchedDefinition) {
+    return null
+  }
+
+  return Number(room?.roomFloor) === matchedDefinition.floor ? matchedDefinition : null
+}
+
+function getSystemManagedRoomDefinition(room) {
+  if (room?.systemManagedRoomKey) {
+    return getSystemManagedRoomDefinitionByKey(room.systemManagedRoomKey)
+  }
+
+  if (room?.isSecretStorage) {
+    return getSystemManagedRoomDefinitionByKey('secret-storage')
+  }
+
+  return null
+}
+
+function isSystemManagedRoom(room) {
+  return Boolean(getSystemManagedRoomDefinition(room))
+}
+
+function normalizeSystemManagedRoom(room, definition) {
+  return {
+    ...room,
+    systemManagedRoomKey: definition.key,
+    isSecretStorage: definition.key === 'secret-storage',
+    roomName: definition.name,
+    roomDescription: definition.description,
+    roomFloor: definition.floor,
+    exits: {
+      north: null,
+      east: null,
+      south: null,
+      west: null,
+      up: null,
+      down: null,
+    },
+  }
+}
+
+function createSecretStorageRoom(roomId) {
+  const secretStorageDefinition = getSystemManagedRoomDefinitionByKey('secret-storage')
+
+  return normalizeSystemManagedRoom({
+    roomId,
+    roomName: secretStorageDefinition.name,
+    roomDescription: secretStorageDefinition.description,
+    roomFloor: secretStorageDefinition.floor,
+    systemManagedRoomKey: secretStorageDefinition.key,
+    isSecretStorage: true,
+    exits: {
+      north: null,
+      east: null,
+      south: null,
+      west: null,
+      up: null,
+      down: null,
+    },
+  }, secretStorageDefinition)
+}
+
+function ensureSecretStorageRoom(rooms) {
+  const existing = rooms.find((room) => getSystemManagedRoomDefinition(room)?.key === 'secret-storage')
+  if (existing) {
+    const normalizedExisting = normalizeSystemManagedRoom(
+      existing,
+      getSystemManagedRoomDefinitionByKey('secret-storage'),
+    )
+
+    const nextRooms = rooms.map((room) =>
+      room.roomId === existing.roomId ? normalizedExisting : room,
+    )
+    return {
+      rooms: stripSecretStorageExits(nextRooms),
+      roomId: existing.roomId,
+      created: false,
+    }
+  }
+
+  const nextRoomId = Math.max(0, ...rooms.map((room) => room.roomId)) + 1
+  const nextRooms = [...rooms, createSecretStorageRoom(nextRoomId)]
+  return {
+    rooms: stripSecretStorageExits(nextRooms),
+    roomId: nextRoomId,
+    created: true,
+  }
+}
+
+function stripSecretStorageExits(rooms) {
+  const secretStorageRoom = rooms.find((room) => getSystemManagedRoomDefinition(room)?.key === 'secret-storage')
+  if (!secretStorageRoom) {
+    return rooms
+  }
+
+  const secretRoomId = secretStorageRoom.roomId
+
+  return rooms.map((room) => {
+    if (room.roomId === secretRoomId) {
+      return normalizeSystemManagedRoom(room, getSystemManagedRoomDefinitionByKey('secret-storage'))
+    }
+
+    const nextExits = { ...room.exits }
+    for (const direction of allDirections) {
+      if (nextExits[direction] === secretRoomId) {
+        nextExits[direction] = null
+      }
+    }
+
+    return {
+      ...room,
+      exits: nextExits,
+    }
+  })
+}
+
+function mapRoomForState(rawRoom) {
+  const exits = mapRawRoomExits(rawRoom)
+  const explicitSystemManagedDefinition = getSystemManagedRoomDefinition(rawRoom)
+  const legacySystemManagedDefinition = getLegacySystemManagedRoomDefinition(rawRoom)
+  const mappedRoom = {
     roomId: Number(rawRoom.roomId),
     roomName: String(rawRoom.roomName ?? ''),
     roomDescription: String(rawRoom.roomDescription ?? ''),
     roomFloor: Number(rawRoom.roomFloor),
-    exits: {
-      north: toNullableNumber(rawRoom.exits?.north ?? rawRoom.northExit),
-      east: toNullableNumber(rawRoom.exits?.east ?? rawRoom.eastExit),
-      south: toNullableNumber(rawRoom.exits?.south ?? rawRoom.southExit),
-      west: toNullableNumber(rawRoom.exits?.west ?? rawRoom.westExit),
-      up: toNullableNumber(rawRoom.exits?.up ?? rawRoom.upExit),
-      down: toNullableNumber(rawRoom.exits?.down ?? rawRoom.downExit),
+    systemManagedRoomKey:
+      explicitSystemManagedDefinition?.key ??
+      (legacySystemManagedDefinition && hasNoExits(exits) ? legacySystemManagedDefinition.key : null),
+    isSecretStorage:
+      explicitSystemManagedDefinition?.key === 'secret-storage' ||
+      (legacySystemManagedDefinition?.key === 'secret-storage' && hasNoExits(exits)),
+    exits,
+  }
+
+  const mappedDefinition = getSystemManagedRoomDefinition(mappedRoom)
+  return mappedDefinition ? normalizeSystemManagedRoom(mappedRoom, mappedDefinition) : mappedRoom
+}
+
+function canEditRoom(room) {
+  return room && !isSystemManagedRoom(room)
+}
+
+function roomToFormState(room) {
+  return {
+    roomId: room.roomId,
+    roomName: room.roomName,
+    roomDescription: room.roomDescription,
+    roomFloor: String(room.roomFloor),
+    northExit: room.exits.north ? String(room.exits.north) : '',
+    eastExit: room.exits.east ? String(room.exits.east) : '',
+    southExit: room.exits.south ? String(room.exits.south) : '',
+    westExit: room.exits.west ? String(room.exits.west) : '',
+    upExit: room.exits.up ? String(room.exits.up) : '',
+    downExit: room.exits.down ? String(room.exits.down) : '',
+  }
+}
+
+function mapItemForState(rawItem, index) {
+  const itemLocation = rawItem.location ?? rawItem.itemLocation ?? rawItem.roomId ?? ''
+  const contentsSource = Array.isArray(rawItem.contents) ? rawItem.contents : []
+
+  const itemContents = contentsSource
+    .map((content) => {
+      if (content === null || content === undefined) {
+        return null
+      }
+
+      if (typeof content === 'object') {
+        const nestedId = content.itemId ?? content.id
+        return nestedId === null || nestedId === undefined ? null : String(nestedId)
+      }
+
+      return String(content)
+    })
+    .filter(Boolean)
+
+  return {
+    itemId: Number(rawItem.itemId ?? rawItem.id ?? index + 1),
+    itemName: String(rawItem.itemName ?? rawItem.name ?? ''),
+    itemWeight: rawItem.itemWeight ?? rawItem.weight ?? '',
+    itemDescription: String(rawItem.itemDescription ?? rawItem.description ?? ''),
+    itemValue: rawItem.itemValue ?? rawItem.value ?? '',
+    canHoldItems: Boolean(rawItem.canHoldItems ?? rawItem.canHold ?? false),
+    canBeCarried: Boolean(rawItem.canBeCarried ?? rawItem.canCarry ?? false),
+    itemLocation: itemLocation === null || itemLocation === undefined ? '' : String(itemLocation),
+    itemContents,
+  }
+}
+
+function getValidatedItemLocation(itemForm, roomsById) {
+  const itemLocation = itemForm.itemLocation === '' ? null : toNullableNumber(itemForm.itemLocation)
+  if (itemForm.itemLocation !== '' && (itemLocation === null || !roomsById.has(itemLocation))) {
+    return { error: 'Selected item room was not found.' }
+  }
+
+  return { itemLocation }
+}
+
+function getValidatedNumericValue(rawValue, label) {
+  const normalizedValue = rawValue === '' ? null : Number(rawValue)
+  if (normalizedValue !== null && Number.isNaN(normalizedValue)) {
+    return { error: `${label} must be a number.` }
+  }
+
+  return { value: normalizedValue }
+}
+
+function getNormalizedContents(itemForm) {
+  return Array.isArray(itemForm.itemContents)
+    ? Array.from(new Set(itemForm.itemContents.filter(Boolean)))
+    : []
+}
+
+function validateContentsSelection(itemForm, selectedContents, currentItems) {
+  if (!itemForm.canHoldItems) {
+    return null
+  }
+
+  const availableItemIds = new Set(currentItems.map((item) => String(item.itemId)))
+  const hasInvalidContents = selectedContents.some((itemId) => !availableItemIds.has(itemId))
+  return hasInvalidContents ? 'One or more selected contents items are invalid.' : null
+}
+
+function itemNameById(itemsById, itemId) {
+  if (!itemId) {
+    return 'Unknown Item'
+  }
+
+  return itemsById.get(String(itemId))?.itemName ?? `Item ${itemId}`
+}
+
+function renderSelectedRoomPanel(
+  selectedRoomPanelMode,
+  selectedRoom,
+  selectedRoomItems,
+  roomsById,
+  itemsById,
+  onSelectItemForEdit,
+  onSelectContainedItem,
+) {
+  if (selectedRoomPanelMode === 'items') {
+    return (
+      <>
+        <h3>{selectedRoom.roomName} Items</h3>
+        {selectedRoomItems.length === 0 ? (
+          <p className="muted">No items are currently assigned to this room.</p>
+        ) : (
+          <ul className="gg-item-list">
+            {selectedRoomItems.map((item) => (
+              <li key={item.itemId}>
+                <button
+                  type="button"
+                  className="gg-item-select-button"
+                  onClick={() => onSelectItemForEdit(item)}
+                  aria-label={`Edit ${item.itemName}`}
+                >
+                  <strong>{item.itemName}</strong>
+                  <span>{item.itemDescription || 'No description.'}</span>
+                </button>
+                {Array.isArray(item.itemContents) && item.itemContents.length > 0 && (
+                  <div className="gg-item-contents-block">
+                    <p className="gg-item-contents-title">Contents</p>
+                    <ul className="gg-item-contents-list">
+                      {item.itemContents.map((contentItemId) => (
+                        <li key={`${item.itemId}-${contentItemId}`}>
+                          <button
+                            type="button"
+                            className="gg-item-contents-button"
+                            onClick={() => onSelectContainedItem(String(contentItemId))}
+                            aria-label={`Edit contained item ${itemNameById(itemsById, contentItemId)}`}
+                          >
+                            {itemNameById(itemsById, contentItemId)}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </>
+    )
+  }
+
+  return (
+    <>
+      <h3>{selectedRoom.roomName}</h3>
+      <p>{selectedRoom.roomDescription || 'No description.'}</p>
+      <ul>
+        <li>North: {roomNameById(roomsById, selectedRoom.exits.north)}</li>
+        <li>East: {roomNameById(roomsById, selectedRoom.exits.east)}</li>
+        <li>South: {roomNameById(roomsById, selectedRoom.exits.south)}</li>
+        <li>West: {roomNameById(roomsById, selectedRoom.exits.west)}</li>
+        <li>Up: {roomNameById(roomsById, selectedRoom.exits.up)}</li>
+        <li>Down: {roomNameById(roomsById, selectedRoom.exits.down)}</li>
+      </ul>
+    </>
+  )
+}
+
+function buildItemSaveResult({ gonfName, itemForm, roomsById, currentItems, currentSelectedRoomId }) {
+  if (!gonfName.trim()) {
+    return { error: 'Gonf Name is required before saving items.' }
+  }
+
+  if (!itemForm.itemName.trim()) {
+    return { error: 'Item Name is required.' }
+  }
+
+  const defaultLocation = itemForm.defaultItemLocation ?? ''
+  const effectiveLocationValue = itemForm.itemLocation === '' ? defaultLocation : itemForm.itemLocation
+
+  const locationResult = getValidatedItemLocation(
+    {
+      ...itemForm,
+      itemLocation: effectiveLocationValue,
     },
+    roomsById,
+  )
+  if (locationResult.error) {
+    return { error: locationResult.error }
+  }
+  const itemLocation = locationResult.itemLocation
+
+  const weightResult = getValidatedNumericValue(itemForm.itemWeight, 'Item Weight')
+  if (weightResult.error) {
+    return { error: weightResult.error }
+  }
+  const itemWeight = weightResult.value
+
+  const valueResult = getValidatedNumericValue(itemForm.itemValue, 'Item Value')
+  if (valueResult.error) {
+    return { error: valueResult.error }
+  }
+  const itemValue = valueResult.value
+
+  const selectedContents = getNormalizedContents(itemForm)
+
+  const contentsError = validateContentsSelection(itemForm, selectedContents, currentItems)
+  if (contentsError) {
+    return { error: contentsError }
+  }
+
+  const editingItemId = toNullableNumber(itemForm.itemId)
+  const nextItemId = editingItemId ?? (Math.max(0, ...currentItems.map((item) => item.itemId)) + 1)
+  const savedItem = {
+    itemId: nextItemId,
+    itemName: itemForm.itemName.trim(),
+    itemWeight,
+    itemDescription: itemForm.itemDescription.trim(),
+    itemValue,
+    canHoldItems: Boolean(itemForm.canHoldItems),
+    canBeCarried: Boolean(itemForm.canBeCarried),
+    itemLocation: itemLocation === null ? '' : String(itemLocation),
+    itemContents: itemForm.canHoldItems ? selectedContents : [],
+  }
+
+  const nextItems = currentItems.some((item) => item.itemId === nextItemId)
+    ? currentItems.map((item) => (item.itemId === nextItemId ? savedItem : item))
+    : [...currentItems, savedItem]
+
+  return {
+    nextItems,
+    nextSelectedRoomId: itemLocation ?? currentSelectedRoomId,
+    message: `Saved item ${savedItem.itemName} to ${itemLocation ? roomNameById(roomsById, itemLocation) : 'the Gonf without a room assignment'}.`,
   }
 }
 
@@ -258,7 +687,7 @@ function parseLoadedGonf(payload) {
     throw new Error('File is missing a valid rooms array.')
   }
 
-  const rooms = payload.rooms
+  const rawRooms = payload.rooms
     .map((rawRoom) => {
       const roomFloor = Number(rawRoom.roomFloor)
       if (!Number.isFinite(roomFloor) || !floors.includes(roomFloor)) {
@@ -271,18 +700,30 @@ function parseLoadedGonf(payload) {
     })
     .filter(Boolean)
 
+  const rooms = stripSecretStorageExits(rawRooms)
+
+  const items = Array.isArray(payload.items)
+    ? payload.items.map((rawItem, index) => mapItemForState(rawItem, index)).filter(Boolean)
+    : []
+
   return {
     gonfName: String(payload.gonfName ?? ''),
     rooms,
+    items,
   }
 }
 
 export default function GonfGenerator() {
   const [gonfName, setGonfName] = useState('')
   const [rooms, setRooms] = useState([])
+  const [items, setItems] = useState([])
   const [form, setForm] = useState(createEmptyForm())
+  const [itemForm, setItemForm] = useState(createEmptyItemForm())
+  const [characterForm, setCharacterForm] = useState(createEmptyCharacterForm())
+  const [activeTab, setActiveTab] = useState('rooms')
   const [activeFloor, setActiveFloor] = useState(1)
   const [selectedRoomId, setSelectedRoomId] = useState(null)
+  const [selectedRoomPanelMode, setSelectedRoomPanelMode] = useState('room')
   const [statusMessage, setStatusMessage] = useState('')
   const [loadInputKey, setLoadInputKey] = useState(0)
 
@@ -300,6 +741,20 @@ export default function GonfGenerator() {
   const upTargetFloor = getTargetFloor(selectedFloorNumber, 'up')
   const downTargetFloor = getTargetFloor(selectedFloorNumber, 'down')
   const floorConnections = useMemo(() => buildFloorConnections(positionedFloorRooms), [positionedFloorRooms])
+  const roomItemCounts = useMemo(() => {
+    const counts = new Map()
+
+    for (const item of items) {
+      if (!item.itemLocation) {
+        continue
+      }
+
+      counts.set(item.itemLocation, (counts.get(item.itemLocation) ?? 0) + 1)
+    }
+
+    return counts
+  }, [items])
+
   const gridColumns = useMemo(
     () => Math.max(5, ...positionedFloorRooms.map((room) => room.x + 1), 1),
     [positionedFloorRooms],
@@ -310,35 +765,101 @@ export default function GonfGenerator() {
   )
 
   const horizontalExitOptions = rooms
-    .filter((room) => room.roomFloor === selectedFloorNumber && room.roomId !== toNullableNumber(form.roomId))
+    .filter(
+      (room) =>
+        room.roomFloor === selectedFloorNumber &&
+        room.roomId !== toNullableNumber(form.roomId) &&
+        !isSystemManagedRoom(room),
+    )
     .map((room) => ({ value: room.roomId, label: room.roomName }))
 
   const upExitOptions =
     upTargetFloor === null
       ? []
       : rooms
-          .filter((room) => room.roomFloor === upTargetFloor && room.roomId !== toNullableNumber(form.roomId))
+          .filter(
+            (room) =>
+              room.roomFloor === upTargetFloor &&
+              room.roomId !== toNullableNumber(form.roomId) &&
+              !isSystemManagedRoom(room),
+          )
           .map((room) => ({ value: room.roomId, label: room.roomName }))
 
   const downExitOptions =
     downTargetFloor === null
       ? []
       : rooms
-          .filter((room) => room.roomFloor === downTargetFloor && room.roomId !== toNullableNumber(form.roomId))
+          .filter(
+            (room) =>
+              room.roomFloor === downTargetFloor &&
+              room.roomId !== toNullableNumber(form.roomId) &&
+              !isSystemManagedRoom(room),
+          )
           .map((room) => ({ value: room.roomId, label: room.roomName }))
 
   const selectedRoom = roomsById.get(selectedRoomId) ?? floorRooms[0] ?? null
+  const selectedRoomItems = useMemo(
+    () => items.filter((item) => item.itemLocation && Number(item.itemLocation) === selectedRoom?.roomId),
+    [items, selectedRoom],
+  )
+
+  const roomOptions = useMemo(
+    () => rooms.map((room) => ({ value: room.roomId, label: room.roomName })),
+    [rooms],
+  )
+
+  const itemsById = useMemo(() => {
+    const map = new Map()
+    for (const item of items) {
+      map.set(String(item.itemId), item)
+    }
+    return map
+  }, [items])
+
+  const contentsOptions = useMemo(
+    () =>
+      items
+        .filter((item) => String(item.itemId) !== String(itemForm.itemId ?? ''))
+        .map((item) => ({ value: String(item.itemId), label: item.itemName })),
+    [items, itemForm.itemId],
+  )
 
   const onFormChange = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }))
+  }
+
+  const onItemFormChange = (field, value) => {
+    setItemForm((current) => ({ ...current, [field]: value }))
+  }
+
+  const onCharacterFormChange = (field, value) => {
+    setCharacterForm((current) => ({ ...current, [field]: value }))
+  }
+
+  const onCanHoldItemsChange = (checked) => {
+    setItemForm((current) => ({
+      ...current,
+      canHoldItems: checked,
+      itemContents: checked ? current.itemContents : [],
+    }))
+  }
+
+  const onItemContentsChange = (event) => {
+    const selectedValues = Array.from(event.target.selectedOptions, (option) => option.value)
+    onItemFormChange('itemContents', selectedValues)
   }
 
   const onCreateNewGonf = () => {
     // GONF-006C: this action intentionally clears all in-memory Gonf and map state.
     setGonfName('')
     setRooms([])
+    setItems([])
     setForm(createEmptyForm())
+    setItemForm(createEmptyItemForm())
+    setCharacterForm(createEmptyCharacterForm())
+    setActiveTab('rooms')
     setSelectedRoomId(null)
+    setSelectedRoomPanelMode('room')
     setActiveFloor(1)
     setStatusMessage('Started a new Gonf. Form and map are cleared until you save a room or load a Gonf.')
     setLoadInputKey((key) => key + 1)
@@ -347,24 +868,72 @@ export default function GonfGenerator() {
   const onClearForm = () => {
     setForm(createEmptyForm())
     setSelectedRoomId(null)
+    setSelectedRoomPanelMode('room')
     setStatusMessage('Cleared room form fields.')
+  }
+
+  const onClearItemForm = () => {
+    setItemForm(createEmptyItemForm())
+    setStatusMessage('Cleared item form fields.')
   }
 
   const onSelectRoom = (room) => {
     setSelectedRoomId(room.roomId)
-    setForm({
-      roomId: room.roomId,
-      roomName: room.roomName,
-      roomDescription: room.roomDescription,
-      roomFloor: String(room.roomFloor),
-      northExit: room.exits.north ? String(room.exits.north) : '',
-      eastExit: room.exits.east ? String(room.exits.east) : '',
-      southExit: room.exits.south ? String(room.exits.south) : '',
-      westExit: room.exits.west ? String(room.exits.west) : '',
-      upExit: room.exits.up ? String(room.exits.up) : '',
-      downExit: room.exits.down ? String(room.exits.down) : '',
-    })
+    setSelectedRoomPanelMode('room')
+
+    if (!canEditRoom(room)) {
+      setForm(createEmptyForm())
+      const systemManagedDefinition = getSystemManagedRoomDefinition(room)
+      setStatusMessage(
+        `${systemManagedDefinition?.name ?? 'This room'} is system-managed and cannot be edited from the room form.`,
+      )
+      return
+    }
+
+    setForm(roomToFormState(room))
     setStatusMessage(`Loaded room ${room.roomName} into the form.`)
+  }
+
+  const onShowRoomItems = (room) => {
+    setSelectedRoomId(room.roomId)
+    setSelectedRoomPanelMode('items')
+    setStatusMessage(`Showing items found in ${room.roomName}.`)
+  }
+
+  const onSelectItemForEdit = (item) => {
+    const itemLocationId = toNullableNumber(item.itemLocation)
+    const targetRoom = itemLocationId ? roomsById.get(itemLocationId) : null
+
+    setActiveTab('items')
+    setItemForm({
+      itemId: item.itemId,
+      itemName: item.itemName,
+      itemWeight: item.itemWeight ?? '',
+      itemDescription: item.itemDescription,
+      itemValue: item.itemValue ?? '',
+      canHoldItems: Boolean(item.canHoldItems),
+      canBeCarried: Boolean(item.canBeCarried),
+      itemLocation: item.itemLocation ?? '',
+      itemContents: Array.isArray(item.itemContents) ? item.itemContents.map(String) : [],
+    })
+
+    if (targetRoom) {
+      setSelectedRoomId(targetRoom.roomId)
+      setActiveFloor(targetRoom.roomFloor)
+      setSelectedRoomPanelMode('items')
+    }
+
+    setStatusMessage(`Loaded item ${item.itemName} into the item form.`)
+  }
+
+  const onSelectContainedItem = (itemId) => {
+    const containedItem = itemsById.get(String(itemId))
+    if (!containedItem) {
+      setStatusMessage('Could not load contained item details because the item was not found.')
+      return
+    }
+
+    onSelectItemForEdit(containedItem)
   }
 
   const onJumpToVerticalExit = (event, room, direction) => {
@@ -402,8 +971,34 @@ export default function GonfGenerator() {
       return
     }
 
-    const roomFloor = Number(form.roomFloor)
     const editingRoomId = toNullableNumber(form.roomId)
+    const existingRoom = editingRoomId !== null ? roomsById.get(editingRoomId) : null
+
+    const systemManagedDefinition = getSystemManagedRoomDefinitionByName(form.roomName)
+    if (systemManagedDefinition) {
+      const isLegacyUpdateForSameNamedRoom =
+        Boolean(existingRoom) &&
+        !isSystemManagedRoom(existingRoom) &&
+        normalizeRoomName(existingRoom.roomName) === normalizeRoomName(systemManagedDefinition.name)
+
+      if (!isLegacyUpdateForSameNamedRoom) {
+        setStatusMessage(
+          `${systemManagedDefinition.name} is a system-managed room name and cannot be created manually.`,
+        )
+        return
+      }
+    }
+
+    const roomFloor = Number(form.roomFloor)
+
+    if (editingRoomId !== null) {
+      if (existingRoom && isSystemManagedRoom(existingRoom)) {
+        const existingDefinition = getSystemManagedRoomDefinition(existingRoom)
+        setStatusMessage(`${existingDefinition?.name ?? 'This room'} is system-managed and cannot be edited.`)
+        setForm(createEmptyForm())
+        return
+      }
+    }
 
     setRooms((currentRooms) => {
       const nextRoomId = editingRoomId ?? (Math.max(0, ...currentRooms.map((room) => room.roomId)) + 1)
@@ -423,15 +1018,60 @@ export default function GonfGenerator() {
         },
       }
 
-      const nextRooms = applyReciprocalLinks(currentRooms, savedRoom)
+      const nextRooms = stripSecretStorageExits(applyReciprocalLinks(currentRooms, savedRoom))
 
       setSelectedRoomId(nextRoomId)
+      setSelectedRoomPanelMode('room')
       setActiveFloor(roomFloor)
       setForm(createEmptyForm())
       setStatusMessage(`Saved room ${savedRoom.roomName} to Gonf ${gonfName.trim()}.`)
 
       return nextRooms
     })
+  }
+
+  const onSaveItem = () => {
+    let roomsForValidation = rooms
+    let defaultItemLocation = ''
+
+    if (itemForm.itemLocation === '') {
+      const ensuredSecretStorage = ensureSecretStorageRoom(rooms)
+      roomsForValidation = ensuredSecretStorage.rooms
+      defaultItemLocation = String(ensuredSecretStorage.roomId)
+
+      if (ensuredSecretStorage.created) {
+        setRooms(roomsForValidation)
+      } else {
+        const roomsDiffer = JSON.stringify(roomsForValidation) !== JSON.stringify(rooms)
+        if (roomsDiffer) {
+          setRooms(roomsForValidation)
+        }
+      }
+    }
+
+    const validationRoomsById = new Map(roomsForValidation.map((room) => [room.roomId, room]))
+
+    const itemSaveResult = buildItemSaveResult({
+      gonfName,
+      itemForm: {
+        ...itemForm,
+        defaultItemLocation,
+      },
+      roomsById: validationRoomsById,
+      currentItems: items,
+      currentSelectedRoomId: selectedRoomId,
+    })
+
+    if (itemSaveResult.error) {
+      setStatusMessage(itemSaveResult.error)
+      return
+    }
+
+    setItems(itemSaveResult.nextItems)
+    setItemForm(createEmptyItemForm())
+    setSelectedRoomPanelMode('items')
+    setSelectedRoomId(itemSaveResult.nextSelectedRoomId)
+    setStatusMessage(itemSaveResult.message)
   }
 
   const onSaveGonf = async () => {
@@ -447,6 +1087,8 @@ export default function GonfGenerator() {
         roomName: room.roomName,
         roomDescription: room.roomDescription,
         roomFloor: room.roomFloor,
+        systemManagedRoomKey: room.systemManagedRoomKey ?? null,
+        isSecretStorage: Boolean(room.isSecretStorage),
         exits: {
           north: room.exits.north,
           east: room.exits.east,
@@ -455,6 +1097,19 @@ export default function GonfGenerator() {
           up: room.exits.up,
           down: room.exits.down,
         },
+      })),
+      items: items.map((item) => ({
+        itemId: item.itemId,
+        itemName: item.itemName,
+        itemWeight: item.itemWeight,
+        itemDescription: item.itemDescription,
+        itemValue: item.itemValue,
+        canHoldItems: item.canHoldItems,
+        canBeCarried: item.canBeCarried,
+        location: item.itemLocation === '' ? null : Number(item.itemLocation),
+        contents: Array.isArray(item.itemContents)
+          ? item.itemContents.map(Number).filter((itemId) => Number.isFinite(itemId))
+          : [],
       })),
     }
 
@@ -496,7 +1151,11 @@ export default function GonfGenerator() {
 
       setGonfName(inferredName)
       setRooms(loaded.rooms)
+      setItems(loaded.items)
       setForm(createEmptyForm())
+      setItemForm(createEmptyItemForm())
+      setCharacterForm(createEmptyCharacterForm())
+      setSelectedRoomPanelMode('room')
       setSelectedRoomId(loaded.rooms[0]?.roomId ?? null)
       setActiveFloor(loaded.rooms[0]?.roomFloor ?? 1)
       setStatusMessage(`Loaded ${loaded.rooms.length} room(s) from ${file.name}.`)
@@ -510,7 +1169,7 @@ export default function GonfGenerator() {
       <section className="panel intro-panel gg-intro">
         <p className="eyebrow">Gonf / Epic 006</p>
         <h1>Gonf Generator</h1>
-        <p>Create, load, and maintain Gonf room data. The map remains empty until rooms are saved or loaded.</p>
+        <p>Create, load, and maintain Gonf data. The Gonf will generate a map based on the rooms. Items can be generated and placed within the map. The map remains empty until rooms are saved or loaded.</p>
       </section>
 
       <section className="panel gg-workflow">
@@ -520,7 +1179,7 @@ export default function GonfGenerator() {
               Create New Gonf
             </button>
             <label className="gg-load-button">
-              Load Existing Gonf
+              <span>Load Existing Gonf</span>
               <input
                 key={loadInputKey}
                 type="file"
@@ -538,162 +1197,322 @@ export default function GonfGenerator() {
               onChange={(event) => setGonfName(event.target.value)}
             />
           </label>
+          <button type="button" className="gg-save-gonf-top-button" onClick={onSaveGonf}>
+            Save Gonf
+          </button>
         </div>
 
         {statusMessage && <output className="status status-info">{statusMessage}</output>}
 
-        <div className="gg-form-grid">
-          <input type="hidden" name="roomId" value={form.roomId ?? ''} />
-
-          <label className="gg-field">
-            <span>Room Name</span>
-            <input
-              type="text"
-              placeholder="Unique room name"
-              value={form.roomName}
-              onChange={(event) => onFormChange('roomName', event.target.value)}
-            />
-          </label>
-
-          <label className="gg-field gg-wide">
-            <span>Room Description</span>
-            <textarea
-              rows={3}
-              value={form.roomDescription}
-              onChange={(event) => onFormChange('roomDescription', event.target.value)}
-            />
-          </label>
-
-          <label className="gg-field">
-            <span>Room Floor</span>
-            <select value={form.roomFloor} onChange={(event) => onFormChange('roomFloor', event.target.value)}>
-              <option value="">Select floor</option>
-              {floors.map((floor) => (
-                <option key={floor} value={floor}>
-                  {floor}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <section className="gg-exit-compass" aria-label="Compass Exits">
-            <h3>Exits</h3>
-
-            <label className="gg-field gg-exit-up">
-              <span>Up Exit</span>
-              <select
-                value={form.upExit}
-                disabled={form.roomFloor === ''}
-                onChange={(event) => onFormChange('upExit', event.target.value)}
-              >
-                <option value="">{form.roomFloor === '' ? 'Select floor first' : 'None'}</option>
-                {upExitOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <small>Target floor: {upTargetFloor ?? '-'}</small>
-            </label>
-
-            <span className="gg-compass-icon gg-compass-up" aria-hidden="true">
-              ↑
-            </span>
-
-            <label className="gg-field gg-exit-north">
-              <span>North Exit</span>
-              <select value={form.northExit} onChange={(event) => onFormChange('northExit', event.target.value)}>
-                <option value="">None</option>
-                {horizontalExitOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <span className="gg-compass-icon gg-compass-ns" aria-hidden="true">
-              ↑
-            </span>
-
-            <label className="gg-field gg-exit-west">
-              <span>West Exit</span>
-              <select value={form.westExit} onChange={(event) => onFormChange('westExit', event.target.value)}>
-                <option value="">None</option>
-                {horizontalExitOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <span className="gg-compass-icon gg-compass-ew" aria-hidden="true">
-              ↔
-            </span>
-
-            <label className="gg-field gg-exit-east">
-              <span>East Exit</span>
-              <select value={form.eastExit} onChange={(event) => onFormChange('eastExit', event.target.value)}>
-                <option value="">None</option>
-                {horizontalExitOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <span className="gg-compass-icon gg-compass-south" aria-hidden="true">
-              ↓
-            </span>
-
-            <label className="gg-field gg-exit-south">
-              <span>South Exit</span>
-              <select value={form.southExit} onChange={(event) => onFormChange('southExit', event.target.value)}>
-                <option value="">None</option>
-                {horizontalExitOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <span className="gg-compass-icon gg-compass-down" aria-hidden="true">
-              ↓
-            </span>
-
-            <label className="gg-field gg-exit-down">
-              <span>Down Exit</span>
-              <select
-                value={form.downExit}
-                disabled={form.roomFloor === ''}
-                onChange={(event) => onFormChange('downExit', event.target.value)}
-              >
-                <option value="">{form.roomFloor === '' ? 'Select floor first' : 'None'}</option>
-                {downExitOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <small>Target floor: {downTargetFloor ?? '-'}</small>
-            </label>
-          </section>
-        </div>
-
-        <div className="gg-button-row">
-          <button type="button" className="gg-save-button" onClick={onSaveRoom}>
-            Save Room
+        <div className="gg-tab-strip" role="tablist" aria-label="Gonf Editor Sections">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'rooms'}
+            className={activeTab === 'rooms' ? 'is-active' : ''}
+            onClick={() => setActiveTab('rooms')}
+          >
+            Rooms
           </button>
-          <button type="button" className="gg-clear-button" onClick={onClearForm}>
-            Clear
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'items'}
+            className={activeTab === 'items' ? 'is-active' : ''}
+            onClick={() => setActiveTab('items')}
+          >
+            Items
           </button>
-          <button type="button" className="gg-save-gonf-button" onClick={onSaveGonf}>
-            Save Gonf
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'character'}
+            className={activeTab === 'character' ? 'is-active' : ''}
+            onClick={() => setActiveTab('character')}
+          >
+            Character
           </button>
         </div>
+
+        {activeTab === 'rooms' && (
+          <div className="gg-tab-content">
+            <div className="gg-form-grid">
+              <input type="hidden" name="roomId" value={form.roomId ?? ''} />
+
+              <label className="gg-field">
+                <span>Room Name</span>
+                <input
+                  type="text"
+                  placeholder="Unique room name"
+                  value={form.roomName}
+                  onChange={(event) => onFormChange('roomName', event.target.value)}
+                />
+              </label>
+
+              <label className="gg-field gg-wide">
+                <span>Room Description</span>
+                <textarea
+                  rows={3}
+                  value={form.roomDescription}
+                  onChange={(event) => onFormChange('roomDescription', event.target.value)}
+                />
+              </label>
+
+              <label className="gg-field">
+                <span>Room Floor</span>
+                <select value={form.roomFloor} onChange={(event) => onFormChange('roomFloor', event.target.value)}>
+                  <option value="">Select floor</option>
+                  {floors.map((floor) => (
+                    <option key={floor} value={floor}>
+                      {floor}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <section className="gg-exit-compass" aria-label="Compass Exits">
+                <h3>Exits</h3>
+
+                <label className="gg-field gg-exit-up">
+                  <span>Up Exit</span>
+                  <select
+                    value={form.upExit}
+                    disabled={form.roomFloor === ''}
+                    onChange={(event) => onFormChange('upExit', event.target.value)}
+                  >
+                    <option value="">{form.roomFloor === '' ? 'Select floor first' : 'None'}</option>
+                    {upExitOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <small>Target floor: {upTargetFloor ?? '-'}</small>
+                </label>
+
+                <span className="gg-compass-icon gg-compass-up" aria-hidden="true">
+                  ↑
+                </span>
+
+                <label className="gg-field gg-exit-north">
+                  <span>North Exit</span>
+                  <select value={form.northExit} onChange={(event) => onFormChange('northExit', event.target.value)}>
+                    <option value="">None</option>
+                    {horizontalExitOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <span className="gg-compass-icon gg-compass-ns" aria-hidden="true">
+                  ↑
+                </span>
+
+                <label className="gg-field gg-exit-west">
+                  <span>West Exit</span>
+                  <select value={form.westExit} onChange={(event) => onFormChange('westExit', event.target.value)}>
+                    <option value="">None</option>
+                    {horizontalExitOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <span className="gg-compass-icon gg-compass-ew" aria-hidden="true">
+                  ↔
+                </span>
+
+                <label className="gg-field gg-exit-east">
+                  <span>East Exit</span>
+                  <select value={form.eastExit} onChange={(event) => onFormChange('eastExit', event.target.value)}>
+                    <option value="">None</option>
+                    {horizontalExitOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <span className="gg-compass-icon gg-compass-south" aria-hidden="true">
+                  ↓
+                </span>
+
+                <label className="gg-field gg-exit-south">
+                  <span>South Exit</span>
+                  <select value={form.southExit} onChange={(event) => onFormChange('southExit', event.target.value)}>
+                    <option value="">None</option>
+                    {horizontalExitOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <span className="gg-compass-icon gg-compass-down" aria-hidden="true">
+                  ↓
+                </span>
+
+                <label className="gg-field gg-exit-down">
+                  <span>Down Exit</span>
+                  <select
+                    value={form.downExit}
+                    disabled={form.roomFloor === ''}
+                    onChange={(event) => onFormChange('downExit', event.target.value)}
+                  >
+                    <option value="">{form.roomFloor === '' ? 'Select floor first' : 'None'}</option>
+                    {downExitOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <small>Target floor: {downTargetFloor ?? '-'}</small>
+                </label>
+              </section>
+            </div>
+
+            <div className="gg-button-row">
+              <button type="button" className="gg-save-button" onClick={onSaveRoom}>
+                Save Room
+              </button>
+              <button type="button" className="gg-clear-button" onClick={onClearForm}>
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'items' && (
+          <div className="gg-tab-content">
+            <div className="gg-item-form-grid">
+              <input type="hidden" name="itemId" value={itemForm.itemId ?? ''} />
+
+              <label className="gg-field">
+                <span>Item Name</span>
+                <input
+                  type="text"
+                  placeholder="Unique item name"
+                  value={itemForm.itemName}
+                  onChange={(event) => onItemFormChange('itemName', event.target.value)}
+                />
+              </label>
+
+              <label className="gg-field">
+                <span>Item Weight</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={itemForm.itemWeight}
+                  onChange={(event) => onItemFormChange('itemWeight', event.target.value)}
+                />
+              </label>
+
+              <label className="gg-field gg-wide">
+                <span>Item Description</span>
+                <textarea
+                  rows={3}
+                  value={itemForm.itemDescription}
+                  onChange={(event) => onItemFormChange('itemDescription', event.target.value)}
+                />
+              </label>
+
+              <label className="gg-field">
+                <span>Item Value</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={itemForm.itemValue}
+                  onChange={(event) => onItemFormChange('itemValue', event.target.value)}
+                />
+              </label>
+
+              <label className="gg-field gg-checkbox-field">
+                <span>Can Hold Items</span>
+                <input
+                  type="checkbox"
+                  checked={itemForm.canHoldItems}
+                  onChange={(event) => onCanHoldItemsChange(event.target.checked)}
+                />
+              </label>
+
+              <label className="gg-field gg-checkbox-field">
+                <span>Can Be Carried</span>
+                <input
+                  type="checkbox"
+                  checked={itemForm.canBeCarried}
+                  onChange={(event) => onItemFormChange('canBeCarried', event.target.checked)}
+                />
+              </label>
+
+              <label className="gg-field gg-wide">
+                <span>Location</span>
+                <select
+                  value={itemForm.itemLocation}
+                  onChange={(event) => onItemFormChange('itemLocation', event.target.value)}
+                >
+                  <option value="">Unassigned</option>
+                  {roomOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <small>All rooms are available regardless of floor.</small>
+              </label>
+
+              {itemForm.canHoldItems && (
+                <label className="gg-field gg-wide">
+                  <span>Contents</span>
+                  <select
+                    className="gg-multi-select"
+                    multiple
+                    size={Math.min(6, Math.max(3, contentsOptions.length || 3))}
+                    value={itemForm.itemContents}
+                    onChange={onItemContentsChange}
+                  >
+                    {contentsOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <small>Select one or more items contained by this object.</small>
+                </label>
+              )}
+            </div>
+
+            <div className="gg-button-row">
+              <button type="button" className="gg-save-button" onClick={onSaveItem}>
+                Save Item
+              </button>
+              <button type="button" className="gg-clear-button" onClick={onClearItemForm}>
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'character' && (
+          <div className="gg-item-form-grid">
+            <label className="gg-field gg-wide">
+              <span>Character Name</span>
+              <input
+                type="text"
+                placeholder="Character name"
+                value={characterForm.characterName}
+                onChange={(event) => onCharacterFormChange('characterName', event.target.value)}
+              />
+            </label>
+          </div>
+        )}
       </section>
 
       <section className="panel gg-map-panel">
@@ -747,9 +1566,29 @@ export default function GonfGenerator() {
                   key={room.roomId}
                   className={`gg-room-card ${selectedRoomId === room.roomId ? 'is-selected' : ''}`}
                   style={{ gridColumn: room.x + 1, gridRow: room.y + 1 }}
-                  onClick={() => onSelectRoom(room)}
                 >
-                  <span>{room.roomName}</span>
+                  <button
+                    type="button"
+                    className="gg-room-select-button"
+                    onClick={() => onSelectRoom(room)}
+                    aria-label={`Select ${room.roomName}`}
+                  >
+                    {room.roomName}
+                  </button>
+                  {roomItemCounts.get(String(room.roomId)) > 0 && (
+                    <button
+                      type="button"
+                      className="gg-room-item-indicator"
+                      aria-label={`View items found in ${room.roomName}`}
+                      title={`View items found in ${room.roomName}`}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onShowRoomItems(room)
+                      }}
+                    >
+                      i
+                    </button>
+                  )}
                   {room.exits.up && (
                     <button
                       type="button"
@@ -778,16 +1617,15 @@ export default function GonfGenerator() {
 
             {selectedRoom && (
               <aside className="gg-room-popover" aria-live="polite">
-                <h3>{selectedRoom.roomName}</h3>
-                <p>{selectedRoom.roomDescription || 'No description.'}</p>
-                <ul>
-                  <li>North: {roomNameById(roomsById, selectedRoom.exits.north)}</li>
-                  <li>East: {roomNameById(roomsById, selectedRoom.exits.east)}</li>
-                  <li>South: {roomNameById(roomsById, selectedRoom.exits.south)}</li>
-                  <li>West: {roomNameById(roomsById, selectedRoom.exits.west)}</li>
-                  <li>Up: {roomNameById(roomsById, selectedRoom.exits.up)}</li>
-                  <li>Down: {roomNameById(roomsById, selectedRoom.exits.down)}</li>
-                </ul>
+                {renderSelectedRoomPanel(
+                  selectedRoomPanelMode,
+                  selectedRoom,
+                  selectedRoomItems,
+                  roomsById,
+                  itemsById,
+                  onSelectItemForEdit,
+                  onSelectContainedItem,
+                )}
               </aside>
             )}
           </div>

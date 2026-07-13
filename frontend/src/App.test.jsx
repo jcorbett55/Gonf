@@ -41,4 +41,128 @@ describe('App', () => {
 
     fetchSpy.mockRestore()
   })
+
+  it('shows room, item, and character tabs in the Gonf Generator section', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+
+    expect(screen.getByRole('tab', { name: 'Rooms' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Items' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Character' })).toBeInTheDocument()
+  })
+
+  it('shows character name field when character tab is selected', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Character' }))
+
+    expect(screen.getByLabelText('Character Name')).toBeInTheDocument()
+  })
+
+  it('shows contents multi-select only when can hold items is checked', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Items' }))
+
+    expect(screen.queryByText('Contents')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Can Hold Items' }))
+
+    expect(screen.getByText('Contents')).toBeInTheDocument()
+  })
+
+  it('auto-creates Secret Storage for unassigned items and blocks room-form edits', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+
+    fireEvent.change(screen.getByLabelText('Gonf Name'), { target: { value: 'TestGonf' } })
+    fireEvent.click(screen.getByRole('tab', { name: 'Items' }))
+    fireEvent.change(screen.getByLabelText('Item Name'), { target: { value: 'Loose Key' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Item' }))
+
+    expect(screen.getByText(/Saved item Loose Key to Secret Storage/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Floor -5' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Select Secret Storage' }))
+
+    expect(
+      screen.getByText(/Secret Storage is system-managed and cannot be edited from the room form/i),
+    ).toBeInTheDocument()
+  })
+
+  it('blocks manual creation of a system-managed room name with a friendly error', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+    fireEvent.change(screen.getByLabelText('Gonf Name'), { target: { value: 'TestGonf' } })
+    fireEvent.change(screen.getByLabelText('Room Name'), { target: { value: 'Secret Storage' } })
+    fireEvent.change(screen.getByLabelText('Room Floor'), { target: { value: '-5' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Room' }))
+
+    expect(
+      screen.getByText(/Secret Storage is a system-managed room name and cannot be created manually/i),
+    ).toBeInTheDocument()
+  })
+
+  it('does not auto-protect a legacy Secret Storage room when legacy exits are populated', async () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+
+    const legacyGonf = {
+      gonfName: 'LegacyGonf',
+      rooms: [
+        {
+          roomId: 1,
+          roomName: 'Secret Storage',
+          roomDescription: 'Legacy room that still has exits',
+          roomFloor: -5,
+          northExit: 2,
+          eastExit: '',
+          southExit: '',
+          westExit: '',
+          upExit: '',
+          downExit: '',
+        },
+        {
+          roomId: 2,
+          roomName: 'Anchor Room',
+          roomDescription: 'Neighbor room',
+          roomFloor: -5,
+          northExit: '',
+          eastExit: '',
+          southExit: '',
+          westExit: '',
+          upExit: '',
+          downExit: '',
+        },
+      ],
+      items: [],
+    }
+
+    const loadFile = new File([JSON.stringify(legacyGonf)], 'legacy-gonf.json', {
+      type: 'application/json',
+    })
+
+    fireEvent.change(screen.getByLabelText('Load Existing Gonf'), {
+      target: { files: [loadFile] },
+    })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Select Secret Storage' }))
+
+    expect(screen.queryByText(/Secret Storage is system-managed and cannot be edited/i)).not.toBeInTheDocument()
+    expect(screen.getByDisplayValue('Secret Storage')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Room Description'), {
+      target: { value: 'Legacy room that still has exits - updated' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Room' }))
+
+    expect(screen.queryByText(/cannot be created manually/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Saved room Secret Storage to Gonf LegacyGonf/i)).toBeInTheDocument()
+  })
 })

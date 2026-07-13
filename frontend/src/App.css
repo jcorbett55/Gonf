@@ -181,9 +181,9 @@ th {
 
 .gg-top-actions {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 0.9rem;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .gg-action-group {
@@ -208,6 +208,17 @@ th {
 .gg-action-group button,
 .gg-save-button {
   background: var(--highlight);
+  color: #fff;
+}
+
+.gg-save-gonf-top-button {
+  margin-left: auto;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.55rem 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: #1e5f44;
   color: #fff;
 }
 
@@ -338,6 +349,50 @@ th {
   gap: 0.55rem;
 }
 
+.gg-tab-strip {
+  display: flex;
+  gap: 0.45rem;
+  padding: 0.25rem;
+  background: #f3f7fc;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.gg-tab-strip button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.5rem 1rem;
+  font-weight: 700;
+  color: #344054;
+  background: transparent;
+  cursor: pointer;
+}
+
+.gg-tab-strip button.is-active {
+  background: var(--highlight);
+  color: #fff;
+}
+
+.gg-item-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.gg-checkbox-field {
+  align-content: start;
+}
+
+.gg-checkbox-field input[type='checkbox'] {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.gg-multi-select {
+  min-height: 7.5rem;
+}
+
 .gg-save-gonf-button {
   margin-left: auto;
   background: #1e5f44;
@@ -430,6 +485,36 @@ th {
   justify-content: center;
 }
 
+.gg-room-select-button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  width: 100%;
+  min-height: 58px;
+  cursor: pointer;
+}
+
+.gg-room-item-indicator {
+  position: absolute;
+  top: -0.55rem;
+  left: -0.4rem;
+  width: 1.4rem;
+  height: 1.4rem;
+  border: 1px solid #8fbb94;
+  border-radius: 999px;
+  background: #e8f6ea;
+  color: #176634;
+  font-weight: 800;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 20px -16px #1b4d2b;
+}
+
 .gg-room-card.is-selected {
   border-color: #22577a;
   box-shadow: 0 0 0 2px rgba(34, 87, 122, 0.2);
@@ -483,6 +568,85 @@ th {
   gap: 0.2rem;
 }
 
+.gg-item-list {
+  margin: 0;
+  padding-left: 0;
+  display: grid;
+  gap: 0.55rem;
+  list-style: none;
+}
+
+.gg-item-list li {
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: #fbfcff;
+  padding: 0;
+}
+
+.gg-item-select-button {
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  width: 100%;
+  padding: 0.65rem 0.7rem;
+  display: grid;
+  gap: 0.25rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gg-item-select-button:hover {
+  background: #f2f7ff;
+}
+
+.gg-item-contents-block {
+  border-top: 1px solid #d8e4f6;
+  padding: 0.5rem 0.7rem 0.65rem;
+}
+
+.gg-item-contents-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #4d617e;
+}
+
+.gg-item-contents-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.gg-item-contents-button {
+  width: 100%;
+  border: 1px solid #c7d8f2;
+  border-radius: 8px;
+  background: #f7faff;
+  color: #274d77;
+  font: inherit;
+  text-align: left;
+  padding: 0.32rem 0.45rem;
+  cursor: pointer;
+}
+
+.gg-item-contents-button:hover {
+  background: #ecf3ff;
+}
+
+.gg-item-list strong {
+  font-size: 0.98rem;
+}
+
+.gg-item-list span {
+  color: #56657a;
+  font-size: 0.92rem;
+}
+
 @media (max-width: 700px) {
   .section-switcher {
     margin-top: 0.7rem;
@@ -510,8 +674,13 @@ th {
 
   .gg-top-actions,
   .gg-map-layout,
-  .gg-form-grid {
+  .gg-form-grid,
+  .gg-item-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .gg-top-actions {
+    align-items: stretch;
   }
 
   .gg-exit-compass {
@@ -547,6 +716,14 @@ th {
 
   .gg-save-gonf-button {
     margin-left: 0;
+  }
+
+  .gg-save-gonf-top-button {
+    margin-left: 0;
+  }
+
+  .gg-tab-strip {
+    width: 100%;
   }
 
   .gg-map-canvas {
