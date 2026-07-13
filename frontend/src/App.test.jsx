@@ -93,4 +93,54 @@ describe('App', () => {
       screen.getByText(/Secret Storage is system-managed and cannot be edited from the room form/i),
     ).toBeInTheDocument()
   })
+
+  it('does not auto-protect a legacy Secret Storage room when legacy exits are populated', async () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+
+    const legacyGonf = {
+      gonfName: 'LegacyGonf',
+      rooms: [
+        {
+          roomId: 1,
+          roomName: 'Secret Storage',
+          roomDescription: 'Legacy room that still has exits',
+          roomFloor: -5,
+          northExit: 2,
+          eastExit: '',
+          southExit: '',
+          westExit: '',
+          upExit: '',
+          downExit: '',
+        },
+        {
+          roomId: 2,
+          roomName: 'Anchor Room',
+          roomDescription: 'Neighbor room',
+          roomFloor: -5,
+          northExit: '',
+          eastExit: '',
+          southExit: '',
+          westExit: '',
+          upExit: '',
+          downExit: '',
+        },
+      ],
+      items: [],
+    }
+
+    const loadFile = new File([JSON.stringify(legacyGonf)], 'legacy-gonf.json', {
+      type: 'application/json',
+    })
+
+    fireEvent.change(screen.getByLabelText('Load Existing Gonf'), {
+      target: { files: [loadFile] },
+    })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Select Secret Storage' }))
+
+    expect(screen.queryByText(/Secret Storage is system-managed and cannot be edited/i)).not.toBeInTheDocument()
+    expect(screen.getByDisplayValue('Secret Storage')).toBeInTheDocument()
+  })
 })

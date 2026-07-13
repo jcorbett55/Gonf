@@ -273,12 +273,23 @@ function applyReciprocalLinks(rooms, savedRoom) {
   return nextRooms
 }
 
-function hasNoExits(room) {
-  if (!room?.exits) {
+function mapRawRoomExits(rawRoom) {
+  return {
+    north: toNullableNumber(rawRoom.exits?.north ?? rawRoom.northExit),
+    east: toNullableNumber(rawRoom.exits?.east ?? rawRoom.eastExit),
+    south: toNullableNumber(rawRoom.exits?.south ?? rawRoom.southExit),
+    west: toNullableNumber(rawRoom.exits?.west ?? rawRoom.westExit),
+    up: toNullableNumber(rawRoom.exits?.up ?? rawRoom.upExit),
+    down: toNullableNumber(rawRoom.exits?.down ?? rawRoom.downExit),
+  }
+}
+
+function hasNoExits(exits) {
+  if (!exits) {
     return true
   }
 
-  return allDirections.every((direction) => room.exits[direction] === null)
+  return allDirections.every((direction) => exits[direction] === null)
 }
 
 function isLegacySecretStorageRoom(room) {
@@ -289,7 +300,7 @@ function isLegacySecretStorageRoom(room) {
 }
 
 function isSecretStorageRoom(room) {
-  return Boolean(room?.isSecretStorage) || isLegacySecretStorageRoom(room)
+  return Boolean(room?.isSecretStorage)
 }
 
 function normalizeSecretStorageRoom(room) {
@@ -380,6 +391,7 @@ function stripSecretStorageExits(rooms) {
 }
 
 function mapRoomForState(rawRoom) {
+  const exits = mapRawRoomExits(rawRoom)
   const mappedRoom = {
     roomId: Number(rawRoom.roomId),
     roomName: String(rawRoom.roomName ?? ''),
@@ -387,15 +399,8 @@ function mapRoomForState(rawRoom) {
     roomFloor: Number(rawRoom.roomFloor),
     isSecretStorage:
       Boolean(rawRoom.isSecretStorage) ||
-      (isLegacySecretStorageRoom(rawRoom) && hasNoExits(rawRoom)),
-    exits: {
-      north: toNullableNumber(rawRoom.exits?.north ?? rawRoom.northExit),
-      east: toNullableNumber(rawRoom.exits?.east ?? rawRoom.eastExit),
-      south: toNullableNumber(rawRoom.exits?.south ?? rawRoom.southExit),
-      west: toNullableNumber(rawRoom.exits?.west ?? rawRoom.westExit),
-      up: toNullableNumber(rawRoom.exits?.up ?? rawRoom.upExit),
-      down: toNullableNumber(rawRoom.exits?.down ?? rawRoom.downExit),
-    },
+      (isLegacySecretStorageRoom(rawRoom) && hasNoExits(exits)),
+    exits,
   }
 
   return mappedRoom.isSecretStorage ? normalizeSecretStorageRoom(mappedRoom) : mappedRoom
