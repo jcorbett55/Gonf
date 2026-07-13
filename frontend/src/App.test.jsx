@@ -94,6 +94,20 @@ describe('App', () => {
     ).toBeInTheDocument()
   })
 
+  it('blocks manual creation of a system-managed room name with a friendly error', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+    fireEvent.change(screen.getByLabelText('Gonf Name'), { target: { value: 'TestGonf' } })
+    fireEvent.change(screen.getByLabelText('Room Name'), { target: { value: 'Secret Storage' } })
+    fireEvent.change(screen.getByLabelText('Room Floor'), { target: { value: '-5' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Room' }))
+
+    expect(
+      screen.getByText(/Secret Storage is a system-managed room name and cannot be created manually/i),
+    ).toBeInTheDocument()
+  })
+
   it('does not auto-protect a legacy Secret Storage room when legacy exits are populated', async () => {
     render(<App />)
 

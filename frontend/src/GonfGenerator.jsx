@@ -4,9 +4,14 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5131
 const floors = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5]
 const planarDirections = ['north', 'east', 'south', 'west']
 const allDirections = ['north', 'east', 'south', 'west', 'up', 'down']
-const SECRET_STORAGE_NAME = 'Secret Storage'
-const SECRET_STORAGE_DESCRIPTION = 'Storage room for items that have no home.'
-const SECRET_STORAGE_FLOOR = -5
+const SYSTEM_MANAGED_ROOMS = [
+  {
+    key: 'secret-storage',
+    name: 'Secret Storage',
+    description: 'Storage room for items that have no home.',
+    floor: -5,
+  },
+]
 const oppositeDirection = {
   north: 'south',
   east: 'west',
@@ -273,6 +278,18 @@ function applyReciprocalLinks(rooms, savedRoom) {
   return nextRooms
 }
 
+function normalizeRoomName(value) {
+  return String(value ?? '').trim().toLowerCase()
+}
+
+function getSystemManagedRoomDefinitionByName(roomName) {
+  return SYSTEM_MANAGED_ROOMS.find((room) => normalizeRoomName(room.name) === normalizeRoomName(roomName)) ?? null
+}
+
+function getSystemManagedRoomDefinitionByKey(roomKey) {
+  return SYSTEM_MANAGED_ROOMS.find((room) => room.key === roomKey) ?? null
+}
+
 function mapRawRoomExits(rawRoom) {
   return {
     north: toNullableNumber(rawRoom.exits?.north ?? rawRoom.northExit),
@@ -292,24 +309,39 @@ function hasNoExits(exits) {
   return allDirections.every((direction) => exits[direction] === null)
 }
 
-function isLegacySecretStorageRoom(room) {
-  return (
-    String(room?.roomName ?? '').trim().toLowerCase() === SECRET_STORAGE_NAME.toLowerCase() &&
-    Number(room?.roomFloor) === SECRET_STORAGE_FLOOR
-  )
+function getLegacySystemManagedRoomDefinition(room) {
+  const matchedDefinition = getSystemManagedRoomDefinitionByName(room?.roomName)
+  if (!matchedDefinition) {
+    return null
+  }
+
+  return Number(room?.roomFloor) === matchedDefinition.floor ? matchedDefinition : null
 }
 
-function isSecretStorageRoom(room) {
-  return Boolean(room?.isSecretStorage)
+function getSystemManagedRoomDefinition(room) {
+  if (room?.systemManagedRoomKey) {
+    return getSystemManagedRoomDefinitionByKey(room.systemManagedRoomKey)
+  }
+
+  if (room?.isSecretStorage) {
+    return getSystemManagedRoomDefinitionByKey('secret-storage')
+  }
+
+  return null
 }
 
-function normalizeSecretStorageRoom(room) {
+function isSystemManagedRoom(room) {
+  return Boolean(getSystemManagedRoomDefinition(room))
+}
+
+function normalizeSystemManagedRoom(room, definition) {
   return {
     ...room,
-    isSecretStorage: true,
-    roomName: SECRET_STORAGE_NAME,
-    roomDescription: SECRET_STORAGE_DESCRIPTION,
-    roomFloor: SECRET_STORAGE_FLOOR,
+    systemManagedRoomKey: definition.key,
+    isSecretStorage: definition.key === 'secret-storage',
+    roomName: definition.name,
+    roomDescription: definition.description,
+    roomFloor: definition.floor,
     exits: {
       north: null,
       east: null,
@@ -322,11 +354,14 @@ function normalizeSecretStorageRoom(room) {
 }
 
 function createSecretStorageRoom(roomId) {
-  return normalizeSecretStorageRoom({
+  const secretStorageDefinition = getSystemManagedRoomDefinitionByKey('secret-storage')
+
+  return normalizeSystemManagedRoom({
     roomId,
-    roomName: SECRET_STORAGE_NAME,
-    roomDescription: SECRET_STORAGE_DESCRIPTION,
-    roomFloor: SECRET_STORAGE_FLOOR,
+    roomName: secretStorageDefinition.name,
+    roomDescription: secretStorageDefinition.description,
+    roomFloor: secretStorageDefinition.floor,
+    systemManagedRoomKey: secretStorageDefinition.key,
     isSecretStorage: true,
     exits: {
       north: null,
@@ -336,13 +371,16 @@ function createSecretStorageRoom(roomId) {
       up: null,
       down: null,
     },
-  })
+  }, secretStorageDefinition)
 }
 
 function ensureSecretStorageRoom(rooms) {
-  const existing = rooms.find((room) => isSecretStorageRoom(room))
+  const existing = rooms.find((room) => getSystemManagedRoomDefinition(room)?.key === 'secret-storage')
   if (existing) {
-    const normalizedExisting = normalizeSecretStorageRoom(existing)
+    const normalizedExisting = normalizeSystemManagedRoom(
+      existing,
+      getSystemManagedRoomDefinitionByKey('secret-storage'),
+    )
 
     const nextRooms = rooms.map((room) =>
       room.roomId === existing.roomId ? normalizedExisting : room,
@@ -364,7 +402,7 @@ function ensureSecretStorageRoom(rooms) {
 }
 
 function stripSecretStorageExits(rooms) {
-  const secretStorageRoom = rooms.find((room) => isSecretStorageRoom(room))
+  const secretStorageRoom = rooms.find((room) => getSystemManagedRoomDefinition(room)?.key === 'secret-storage')
   if (!secretStorageRoom) {
     return rooms
   }
@@ -373,7 +411,7 @@ function stripSecretStorageExits(rooms) {
 
   return rooms.map((room) => {
     if (room.roomId === secretRoomId) {
-      return normalizeSecretStorageRoom(room)
+      return normalizeSystemManagedRoom(room, getSystemManagedRoomDefinitionByKey('secret-storage'))
     }
 
     const nextExits = { ...room.exits }
@@ -392,22 +430,28 @@ function stripSecretStorageExits(rooms) {
 
 function mapRoomForState(rawRoom) {
   const exits = mapRawRoomExits(rawRoom)
+  const explicitSystemManagedDefinition = getSystemManagedRoomDefinition(rawRoom)
+  const legacySystemManagedDefinition = getLegacySystemManagedRoomDefinition(rawRoom)
   const mappedRoom = {
     roomId: Number(rawRoom.roomId),
     roomName: String(rawRoom.roomName ?? ''),
     roomDescription: String(rawRoom.roomDescription ?? ''),
     roomFloor: Number(rawRoom.roomFloor),
+    systemManagedRoomKey:
+      explicitSystemManagedDefinition?.key ??
+      (legacySystemManagedDefinition && hasNoExits(exits) ? legacySystemManagedDefinition.key : null),
     isSecretStorage:
-      Boolean(rawRoom.isSecretStorage) ||
-      (isLegacySecretStorageRoom(rawRoom) && hasNoExits(exits)),
+      explicitSystemManagedDefinition?.key === 'secret-storage' ||
+      (legacySystemManagedDefinition?.key === 'secret-storage' && hasNoExits(exits)),
     exits,
   }
 
-  return mappedRoom.isSecretStorage ? normalizeSecretStorageRoom(mappedRoom) : mappedRoom
+  const mappedDefinition = getSystemManagedRoomDefinition(mappedRoom)
+  return mappedDefinition ? normalizeSystemManagedRoom(mappedRoom, mappedDefinition) : mappedRoom
 }
 
 function canEditRoom(room) {
-  return room && !isSecretStorageRoom(room)
+  return room && !isSystemManagedRoom(room)
 }
 
 function roomToFormState(room) {
@@ -725,7 +769,7 @@ export default function GonfGenerator() {
       (room) =>
         room.roomFloor === selectedFloorNumber &&
         room.roomId !== toNullableNumber(form.roomId) &&
-        !isSecretStorageRoom(room),
+        !isSystemManagedRoom(room),
     )
     .map((room) => ({ value: room.roomId, label: room.roomName }))
 
@@ -737,7 +781,7 @@ export default function GonfGenerator() {
             (room) =>
               room.roomFloor === upTargetFloor &&
               room.roomId !== toNullableNumber(form.roomId) &&
-              !isSecretStorageRoom(room),
+              !isSystemManagedRoom(room),
           )
           .map((room) => ({ value: room.roomId, label: room.roomName }))
 
@@ -749,7 +793,7 @@ export default function GonfGenerator() {
             (room) =>
               room.roomFloor === downTargetFloor &&
               room.roomId !== toNullableNumber(form.roomId) &&
-              !isSecretStorageRoom(room),
+              !isSystemManagedRoom(room),
           )
           .map((room) => ({ value: room.roomId, label: room.roomName }))
 
@@ -839,8 +883,9 @@ export default function GonfGenerator() {
 
     if (!canEditRoom(room)) {
       setForm(createEmptyForm())
+      const systemManagedDefinition = getSystemManagedRoomDefinition(room)
       setStatusMessage(
-        `${SECRET_STORAGE_NAME} is system-managed and cannot be edited from the room form.`,
+        `${systemManagedDefinition?.name ?? 'This room'} is system-managed and cannot be edited from the room form.`,
       )
       return
     }
@@ -926,13 +971,22 @@ export default function GonfGenerator() {
       return
     }
 
+    const systemManagedDefinition = getSystemManagedRoomDefinitionByName(form.roomName)
+    if (systemManagedDefinition) {
+      setStatusMessage(
+        `${systemManagedDefinition.name} is a system-managed room name and cannot be created manually.`,
+      )
+      return
+    }
+
     const roomFloor = Number(form.roomFloor)
     const editingRoomId = toNullableNumber(form.roomId)
 
     if (editingRoomId !== null) {
       const existingRoom = roomsById.get(editingRoomId)
-      if (existingRoom && isSecretStorageRoom(existingRoom)) {
-        setStatusMessage(`${SECRET_STORAGE_NAME} is system-managed and cannot be edited.`)
+      if (existingRoom && isSystemManagedRoom(existingRoom)) {
+        const existingDefinition = getSystemManagedRoomDefinition(existingRoom)
+        setStatusMessage(`${existingDefinition?.name ?? 'This room'} is system-managed and cannot be edited.`)
         setForm(createEmptyForm())
         return
       }
@@ -1025,6 +1079,7 @@ export default function GonfGenerator() {
         roomName: room.roomName,
         roomDescription: room.roomDescription,
         roomFloor: room.roomFloor,
+        systemManagedRoomKey: room.systemManagedRoomKey ?? null,
         isSecretStorage: Boolean(room.isSecretStorage),
         exits: {
           north: room.exits.north,
