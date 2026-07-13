@@ -17,12 +17,14 @@ Expand the Character tab UX to support full character authoring, room placement 
    - Clear
 3. Clear in Character tab resets only character form fields.
 4. Save Character creates or updates character state.
-5. If Location is empty at Save Character time, character is assigned to Secret Storage.
+5. If Location is empty at Save Character time, character is assigned to Secret Storage, and Secret Storage is created if missing.
 6. If Location is provided, it must be a valid room from available rooms.
-7. Rooms with one or more characters show one character icon in the room square.
-8. Clicking a room character icon causes the side panel to display the character(s) found in that room in place of room information.
-9. Character details in the side panel include carried items list from contains.
-10. Save Gonf persists rooms, items, and characters via existing save flow.
+7. Item assignment is one-place only; selecting an item in a character contains list removes any prior room location and prior character contains references for that item.
+8. Wanderer is persisted as a field only in this epic, with no movement behavior.
+9. Rooms with one or more characters show one character icon in the room square.
+10. Clicking a room character icon causes the side panel to display the character(s) found in that room in place of room information.
+11. Character details in the side panel include carried items list from contains.
+12. Save Gonf persists rooms, items, and characters via existing save flow.
 
 ## User Story
 
@@ -36,20 +38,24 @@ So I can build richer Gonf content and verify character presence quickly.
 2. Contains options are populated from existing items.
 3. Save Character creates or updates characters with valid data.
 4. Clear resets only character fields and does not modify room/item forms.
-5. Empty Location defaults character to Secret Storage on save.
+5. Empty Location defaults character to Secret Storage on save, with Secret Storage auto-created if missing.
 6. Invalid Location selections are prevented or surfaced with clear error messaging.
-7. Map character indicator appears once for rooms containing one or more characters.
-8. Clicking character indicator renders room character list in details panel.
-9. Character list entries show carried items under each character details block.
-10. Load existing Gonf repopulates characters and map indicators.
-11. Existing Rooms and Items workflows do not regress.
+7. Selecting an item in Contains reassigns that item to the selected character and removes all previous room/character references for that item.
+8. Wanderer value is saved and loaded with no movement behavior required in this epic.
+9. Map character indicator appears once for rooms containing one or more characters.
+10. Clicking character indicator renders room character list in details panel.
+11. Character list entries show carried items under each character details block.
+12. Load existing Gonf repopulates characters and map indicators.
+13. Existing Rooms and Items workflows do not regress.
 
 ## Edge Cases and Error Handling
 
 1. Save Character with no rooms explicitly assigned and no location selected.
 2. Contains selected when item is later removed.
-3. Multiple characters in same room.
-4. Character icon click when room has zero characters.
+3. Item currently located in a room is assigned to a character.
+4. Item currently assigned to one character is assigned to another character.
+5. Multiple characters in same room.
+6. Character icon click when room has zero characters.
 
 ## Non-Functional Requirements
 

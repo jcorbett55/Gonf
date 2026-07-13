@@ -10,10 +10,13 @@ Extend backend save/load behavior to persist expanded character data with Gonf J
 2. Save creates C:\Gonf if it does not exist.
 3. Character location is optional in request payload.
 4. If character location is provided, it must reference a valid roomId.
-5. If character location is omitted or empty, persisted character location defaults to Secret Storage roomId.
+5. If character location is omitted or empty, persisted character location defaults to Secret Storage roomId, and Secret Storage is created if missing.
 6. Character contains is optional and defaults to an empty list.
 7. If contains is provided, every itemId must reference a valid item in the same Gonf.
-8. Validation errors return machine-readable code plus user-facing guidance.
+8. Item assignment is one-place only; an itemId may be referenced either by a room location or one character contains list, never multiple places simultaneously.
+9. On item reassignment to a character, backend removes prior room location and prior character contains references for that itemId.
+10. Wanderer is persisted as data only in this epic, with no backend movement behavior.
+11. Validation errors return machine-readable code plus user-facing guidance.
 
 ## User Story
 
@@ -27,11 +30,13 @@ So character placement and carried items are preserved across sessions.
 2. Load path returns character collection with Gonf payload.
 3. Validation rejects invalid character location references.
 4. Validation rejects invalid contains item references.
-5. Empty character location is normalized to Secret Storage on save.
-6. Persistence remains backward compatible for legacy files with missing character fields.
-7. Save success response includes user-facing confirmation.
-8. Error handling includes user-friendly messages for file-system failures.
-9. Automated tests cover positive/negative character save/load paths.
+5. Empty character location is normalized to Secret Storage on save, including auto-create of Secret Storage when missing.
+6. Item reassignment is normalized so each itemId has a single active assignment after save.
+7. Wanderer value persists and reloads unchanged.
+8. Persistence remains backward compatible for legacy files with missing character fields.
+9. Save success response includes user-facing confirmation.
+10. Error handling includes user-friendly messages for file-system failures.
+11. Automated tests cover positive/negative character save/load paths.
 
 ## Edge Cases and Error Handling
 
@@ -39,7 +44,9 @@ So character placement and carried items are preserved across sessions.
 2. Character contains list includes unknown itemIds.
 3. Payload includes malformed wanderer values.
 4. Secret Storage does not yet exist when defaulting location.
-5. Save fails because access denied or disk full.
+5. Item is in a room and becomes assigned to a character in the same save.
+6. Item is reassigned from one character to another in the same save.
+7. Save fails because access denied or disk full.
 
 ## Non-Functional Requirements
 
@@ -61,8 +68,7 @@ So character placement and carried items are preserved across sessions.
 
 ## Open Questions
 
-1. Whether backend should reject duplicate itemIds in contains.
-2. Whether empty description should be normalized to empty string or null.
+1. Whether empty description should be normalized to empty string or null.
 
 ## Architecture Notes
 

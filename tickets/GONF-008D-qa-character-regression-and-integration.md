@@ -24,8 +24,10 @@ So new character features do not break current Gonf functionality.
 4. Negative-path tests cover invalid character location and invalid contains references.
 5. Regression confirms room editing, item workflows, room exits, and map rendering remain functional.
 6. QA evidence includes pass/fail cycles and defect references.
-7. QA verifies empty character location defaults to Secret Storage.
-8. QA verifies character icon click shows room-specific character list and carried items details.
+7. QA verifies empty character location defaults to Secret Storage and auto-creates Secret Storage when missing.
+8. QA verifies item reassignment rules: assigning an item to a character removes prior room location and prior character references.
+9. QA verifies wanderer field persistence only (save/load), with no movement behavior expectations.
+10. QA verifies character icon click shows room-specific character list and carried items details.
 
 ## Edge Cases and Error Handling
 
@@ -34,6 +36,8 @@ So new character features do not break current Gonf functionality.
 3. Legacy Gonf file with missing character fields.
 4. Character points to deleted/invalid room id.
 5. Contains references deleted/invalid item id.
+6. Item moves from room location to character contains assignment.
+7. Item moves from one character to another character assignment.
 
 ## Non-Functional Requirements
 
@@ -68,8 +72,11 @@ So new character features do not break current Gonf functionality.
 1. Verify character indicator appears only for rooms with located characters.
 2. Verify icon click shows room-specific character list in details area.
 3. Verify carried items are shown under each character details block.
-4. Verify Save Gonf writes rooms + items + characters in one payload.
-5. Verify no regressions in prior GONF-006 and GONF-007 behaviors.
+4. Verify Save Character with empty location creates Secret Storage when needed and assigns character to it.
+5. Verify item reassignment removes previous room/character references and leaves one active owner per item.
+6. Verify wanderer save/load persistence without movement assertions.
+7. Verify Save Gonf writes rooms + items + characters in one payload.
+8. Verify no regressions in prior GONF-006 and GONF-007 behaviors.
 
 ## Traceability
 
