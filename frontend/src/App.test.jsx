@@ -73,4 +73,24 @@ describe('App', () => {
 
     expect(screen.getByText('Contents')).toBeInTheDocument()
   })
+
+  it('auto-creates Secret Storage for unassigned items and blocks room-form edits', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+
+    fireEvent.change(screen.getByLabelText('Gonf Name'), { target: { value: 'TestGonf' } })
+    fireEvent.click(screen.getByRole('tab', { name: 'Items' }))
+    fireEvent.change(screen.getByLabelText('Item Name'), { target: { value: 'Loose Key' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Item' }))
+
+    expect(screen.getByText(/Saved item Loose Key to Secret Storage/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Floor -5' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Select Secret Storage' }))
+
+    expect(
+      screen.getByText(/Secret Storage is system-managed and cannot be edited from the room form/i),
+    ).toBeInTheDocument()
+  })
 })

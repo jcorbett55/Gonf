@@ -273,13 +273,29 @@ function applyReciprocalLinks(rooms, savedRoom) {
   return nextRooms
 }
 
-function isSecretStorageRoom(room) {
-  return String(room?.roomName ?? '').trim().toLowerCase() === SECRET_STORAGE_NAME.toLowerCase()
+function hasNoExits(room) {
+  if (!room?.exits) {
+    return true
+  }
+
+  return allDirections.every((direction) => room.exits[direction] === null)
 }
 
-function createSecretStorageRoom(roomId) {
+function isLegacySecretStorageRoom(room) {
+  return (
+    String(room?.roomName ?? '').trim().toLowerCase() === SECRET_STORAGE_NAME.toLowerCase() &&
+    Number(room?.roomFloor) === SECRET_STORAGE_FLOOR
+  )
+}
+
+function isSecretStorageRoom(room) {
+  return Boolean(room?.isSecretStorage) || isLegacySecretStorageRoom(room)
+}
+
+function normalizeSecretStorageRoom(room) {
   return {
-    roomId,
+    ...room,
+    isSecretStorage: true,
     roomName: SECRET_STORAGE_NAME,
     roomDescription: SECRET_STORAGE_DESCRIPTION,
     roomFloor: SECRET_STORAGE_FLOOR,
@@ -294,23 +310,28 @@ function createSecretStorageRoom(roomId) {
   }
 }
 
+function createSecretStorageRoom(roomId) {
+  return normalizeSecretStorageRoom({
+    roomId,
+    roomName: SECRET_STORAGE_NAME,
+    roomDescription: SECRET_STORAGE_DESCRIPTION,
+    roomFloor: SECRET_STORAGE_FLOOR,
+    isSecretStorage: true,
+    exits: {
+      north: null,
+      east: null,
+      south: null,
+      west: null,
+      up: null,
+      down: null,
+    },
+  })
+}
+
 function ensureSecretStorageRoom(rooms) {
   const existing = rooms.find((room) => isSecretStorageRoom(room))
   if (existing) {
-    const normalizedExisting = {
-      ...existing,
-      roomName: SECRET_STORAGE_NAME,
-      roomDescription: SECRET_STORAGE_DESCRIPTION,
-      roomFloor: SECRET_STORAGE_FLOOR,
-      exits: {
-        north: null,
-        east: null,
-        south: null,
-        west: null,
-        up: null,
-        down: null,
-      },
-    }
+    const normalizedExisting = normalizeSecretStorageRoom(existing)
 
     const nextRooms = rooms.map((room) =>
       room.roomId === existing.roomId ? normalizedExisting : room,
@@ -341,20 +362,7 @@ function stripSecretStorageExits(rooms) {
 
   return rooms.map((room) => {
     if (room.roomId === secretRoomId) {
-      return {
-        ...room,
-        roomName: SECRET_STORAGE_NAME,
-        roomDescription: SECRET_STORAGE_DESCRIPTION,
-        roomFloor: SECRET_STORAGE_FLOOR,
-        exits: {
-          north: null,
-          east: null,
-          south: null,
-          west: null,
-          up: null,
-          down: null,
-        },
-      }
+      return normalizeSecretStorageRoom(room)
     }
 
     const nextExits = { ...room.exits }
@@ -372,11 +380,14 @@ function stripSecretStorageExits(rooms) {
 }
 
 function mapRoomForState(rawRoom) {
-  return {
+  const mappedRoom = {
     roomId: Number(rawRoom.roomId),
     roomName: String(rawRoom.roomName ?? ''),
     roomDescription: String(rawRoom.roomDescription ?? ''),
     roomFloor: Number(rawRoom.roomFloor),
+    isSecretStorage:
+      Boolean(rawRoom.isSecretStorage) ||
+      (isLegacySecretStorageRoom(rawRoom) && hasNoExits(rawRoom)),
     exits: {
       north: toNullableNumber(rawRoom.exits?.north ?? rawRoom.northExit),
       east: toNullableNumber(rawRoom.exits?.east ?? rawRoom.eastExit),
@@ -385,6 +396,27 @@ function mapRoomForState(rawRoom) {
       up: toNullableNumber(rawRoom.exits?.up ?? rawRoom.upExit),
       down: toNullableNumber(rawRoom.exits?.down ?? rawRoom.downExit),
     },
+  }
+
+  return mappedRoom.isSecretStorage ? normalizeSecretStorageRoom(mappedRoom) : mappedRoom
+}
+
+function canEditRoom(room) {
+  return room && !isSecretStorageRoom(room)
+}
+
+function roomToFormState(room) {
+  return {
+    roomId: room.roomId,
+    roomName: room.roomName,
+    roomDescription: room.roomDescription,
+    roomFloor: String(room.roomFloor),
+    northExit: room.exits.north ? String(room.exits.north) : '',
+    eastExit: room.exits.east ? String(room.exits.east) : '',
+    southExit: room.exits.south ? String(room.exits.south) : '',
+    westExit: room.exits.west ? String(room.exits.west) : '',
+    upExit: room.exits.up ? String(room.exits.up) : '',
+    downExit: room.exits.down ? String(room.exits.down) : '',
   }
 }
 
@@ -799,18 +831,16 @@ export default function GonfGenerator() {
   const onSelectRoom = (room) => {
     setSelectedRoomId(room.roomId)
     setSelectedRoomPanelMode('room')
-    setForm({
-      roomId: room.roomId,
-      roomName: room.roomName,
-      roomDescription: room.roomDescription,
-      roomFloor: String(room.roomFloor),
-      northExit: room.exits.north ? String(room.exits.north) : '',
-      eastExit: room.exits.east ? String(room.exits.east) : '',
-      southExit: room.exits.south ? String(room.exits.south) : '',
-      westExit: room.exits.west ? String(room.exits.west) : '',
-      upExit: room.exits.up ? String(room.exits.up) : '',
-      downExit: room.exits.down ? String(room.exits.down) : '',
-    })
+
+    if (!canEditRoom(room)) {
+      setForm(createEmptyForm())
+      setStatusMessage(
+        `${SECRET_STORAGE_NAME} is system-managed and cannot be edited from the room form.`,
+      )
+      return
+    }
+
+    setForm(roomToFormState(room))
     setStatusMessage(`Loaded room ${room.roomName} into the form.`)
   }
 
@@ -893,6 +923,15 @@ export default function GonfGenerator() {
 
     const roomFloor = Number(form.roomFloor)
     const editingRoomId = toNullableNumber(form.roomId)
+
+    if (editingRoomId !== null) {
+      const existingRoom = roomsById.get(editingRoomId)
+      if (existingRoom && isSecretStorageRoom(existingRoom)) {
+        setStatusMessage(`${SECRET_STORAGE_NAME} is system-managed and cannot be edited.`)
+        setForm(createEmptyForm())
+        return
+      }
+    }
 
     setRooms((currentRooms) => {
       const nextRoomId = editingRoomId ?? (Math.max(0, ...currentRooms.map((room) => room.roomId)) + 1)
@@ -981,6 +1020,7 @@ export default function GonfGenerator() {
         roomName: room.roomName,
         roomDescription: room.roomDescription,
         roomFloor: room.roomFloor,
+        isSecretStorage: Boolean(room.isSecretStorage),
         exits: {
           north: room.exits.north,
           east: room.exits.east,
