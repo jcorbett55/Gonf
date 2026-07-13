@@ -179,6 +179,39 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Edit contained item Loose Key' })).toBeInTheDocument()
   })
 
+  it('removes item from container contents when a character starts carrying it', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+    fireEvent.change(screen.getByLabelText('Gonf Name'), { target: { value: 'TestGonf' } })
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Items' }))
+    fireEvent.change(screen.getByLabelText('Item Name'), { target: { value: 'Loose Key' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Item' }))
+
+    fireEvent.change(screen.getByLabelText('Item Name'), { target: { value: 'Satchel' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Can Hold Items' }))
+    const itemContentsList = screen.getByRole('listbox')
+    const looseKeyInItemOption = screen.getByRole('option', { name: 'Loose Key' })
+    looseKeyInItemOption.selected = true
+    fireEvent.change(itemContentsList)
+    fireEvent.click(screen.getByRole('button', { name: 'Save Item' }))
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Character' }))
+    fireEvent.change(screen.getByLabelText('Character Name'), { target: { value: 'Ava' } })
+    const characterContainsList = screen.getByRole('listbox')
+    const looseKeyInCharacterOption = screen.getByRole('option', { name: 'Loose Key' })
+    looseKeyInCharacterOption.selected = true
+    fireEvent.change(characterContainsList)
+    fireEvent.click(screen.getByRole('button', { name: 'Save Character' }))
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Floor -5' }))
+    fireEvent.click(screen.getByRole('button', { name: 'View items found in Secret Storage' }))
+
+    expect(screen.getByRole('button', { name: 'Edit Satchel' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit contained item Loose Key' })).not.toBeInTheDocument()
+  })
+
   it('auto-creates Secret Storage for unassigned items and blocks room-form edits', () => {
     render(<App />)
 

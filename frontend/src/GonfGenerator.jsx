@@ -747,13 +747,21 @@ function buildCharacterSaveResult({
 
   const selectedContainsSet = new Set(selectedContains.map(String))
   const nextItems = currentItems.map((item) => {
+    const nextContents = Array.isArray(item.itemContents)
+      ? item.itemContents.filter((containedId) => !selectedContainsSet.has(String(containedId)))
+      : []
+
     if (!selectedContainsSet.has(String(item.itemId))) {
-      return item
+      return {
+        ...item,
+        itemContents: nextContents,
+      }
     }
 
     return {
       ...item,
       itemLocation: '',
+      itemContents: nextContents,
     }
   })
 
@@ -802,7 +810,7 @@ function buildCharacterSaveResult({
   }
 }
 
-function buildItemSaveResult({ gonfName, itemForm, roomsById, currentItems, currentSelectedRoomId }) {
+function buildItemSaveResult({ gonfName, itemForm, roomsById, currentItems, currentCharacters, currentSelectedRoomId }) {
   if (!gonfName.trim()) {
     return { error: 'Gonf Name is required before saving items.' }
   }
@@ -887,8 +895,20 @@ function buildItemSaveResult({ gonfName, itemForm, roomsById, currentItems, curr
     ? normalizedItems.map((item) => (item.itemId === nextItemId ? savedItem : item))
     : [...normalizedItems, savedItem]
 
+  const nextCharacters = currentCharacters.map((character) => {
+    if (!Array.isArray(character.characterContains)) {
+      return character
+    }
+
+    return {
+      ...character,
+      characterContains: character.characterContains.filter((itemId) => !selectedContentsSet.has(String(itemId))),
+    }
+  })
+
   return {
     nextItems,
+    nextCharacters,
     nextSelectedRoomId: itemLocation ?? currentSelectedRoomId,
     message: `Saved item ${savedItem.itemName} to ${itemLocation ? roomNameById(roomsById, itemLocation) : 'the Gonf without a room assignment'}.`,
   }
@@ -1349,6 +1369,7 @@ export default function GonfGenerator() {
       },
       roomsById: validationRoomsById,
       currentItems: items,
+      currentCharacters: characters,
       currentSelectedRoomId: selectedRoomId,
     })
 
@@ -1358,6 +1379,7 @@ export default function GonfGenerator() {
     }
 
     setItems(itemSaveResult.nextItems)
+    setCharacters(itemSaveResult.nextCharacters)
     setItemForm(createEmptyItemForm())
     setSelectedRoomPanelMode('items')
     setSelectedRoomId(itemSaveResult.nextSelectedRoomId)
