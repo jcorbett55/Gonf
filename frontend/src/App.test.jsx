@@ -156,5 +156,13 @@ describe('App', () => {
 
     expect(screen.queryByText(/Secret Storage is system-managed and cannot be edited/i)).not.toBeInTheDocument()
     expect(screen.getByDisplayValue('Secret Storage')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Room Description'), {
+      target: { value: 'Legacy room that still has exits - updated' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Room' }))
+
+    expect(screen.queryByText(/cannot be created manually/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Saved room Secret Storage to Gonf LegacyGonf/i)).toBeInTheDocument()
   })
 })

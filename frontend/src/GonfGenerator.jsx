@@ -971,19 +971,27 @@ export default function GonfGenerator() {
       return
     }
 
+    const editingRoomId = toNullableNumber(form.roomId)
+    const existingRoom = editingRoomId !== null ? roomsById.get(editingRoomId) : null
+
     const systemManagedDefinition = getSystemManagedRoomDefinitionByName(form.roomName)
     if (systemManagedDefinition) {
-      setStatusMessage(
-        `${systemManagedDefinition.name} is a system-managed room name and cannot be created manually.`,
-      )
-      return
+      const isLegacyUpdateForSameNamedRoom =
+        Boolean(existingRoom) &&
+        !isSystemManagedRoom(existingRoom) &&
+        normalizeRoomName(existingRoom.roomName) === normalizeRoomName(systemManagedDefinition.name)
+
+      if (!isLegacyUpdateForSameNamedRoom) {
+        setStatusMessage(
+          `${systemManagedDefinition.name} is a system-managed room name and cannot be created manually.`,
+        )
+        return
+      }
     }
 
     const roomFloor = Number(form.roomFloor)
-    const editingRoomId = toNullableNumber(form.roomId)
 
     if (editingRoomId !== null) {
-      const existingRoom = roomsById.get(editingRoomId)
       if (existingRoom && isSystemManagedRoom(existingRoom)) {
         const existingDefinition = getSystemManagedRoomDefinition(existingRoom)
         setStatusMessage(`${existingDefinition?.name ?? 'This room'} is system-managed and cannot be edited.`)
