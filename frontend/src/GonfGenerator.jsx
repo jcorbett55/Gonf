@@ -52,7 +52,12 @@ function createEmptyItemForm() {
 
 function createEmptyCharacterForm() {
   return {
+    characterId: null,
     characterName: '',
+    characterDescription: '',
+    characterLocation: '',
+    characterWanderer: false,
+    characterContains: [],
   }
 }
 
@@ -501,6 +506,35 @@ function mapItemForState(rawItem, index) {
   }
 }
 
+function mapCharacterForState(rawCharacter, index) {
+  const characterLocation = rawCharacter.location ?? rawCharacter.characterLocation ?? rawCharacter.roomId ?? ''
+  const characterContainsSource = Array.isArray(rawCharacter.contains) ? rawCharacter.contains : []
+
+  const characterContains = characterContainsSource
+    .map((containedItem) => {
+      if (containedItem === null || containedItem === undefined) {
+        return null
+      }
+
+      if (typeof containedItem === 'object') {
+        const nestedId = containedItem.itemId ?? containedItem.id
+        return nestedId === null || nestedId === undefined ? null : String(nestedId)
+      }
+
+      return String(containedItem)
+    })
+    .filter(Boolean)
+
+  return {
+    characterId: Number(rawCharacter.characterId ?? rawCharacter.id ?? index + 1),
+    characterName: String(rawCharacter.characterName ?? rawCharacter.name ?? ''),
+    characterDescription: String(rawCharacter.description ?? rawCharacter.characterDescription ?? ''),
+    characterLocation: characterLocation === null || characterLocation === undefined ? '' : String(characterLocation),
+    characterWanderer: Boolean(rawCharacter.wanderer ?? false),
+    characterContains,
+  }
+}
+
 function getValidatedItemLocation(itemForm, roomsById) {
   const itemLocation = itemForm.itemLocation === '' ? null : toNullableNumber(itemForm.itemLocation)
   if (itemForm.itemLocation !== '' && (itemLocation === null || !roomsById.has(itemLocation))) {
@@ -543,15 +577,17 @@ function itemNameById(itemsById, itemId) {
   return itemsById.get(String(itemId))?.itemName ?? `Item ${itemId}`
 }
 
-function renderSelectedRoomPanel(
+function renderSelectedRoomPanel({
   selectedRoomPanelMode,
   selectedRoom,
   selectedRoomItems,
+  selectedRoomCharacters,
   roomsById,
   itemsById,
   onSelectItemForEdit,
   onSelectContainedItem,
-) {
+  onSelectCharacterForEdit,
+}) {
   if (selectedRoomPanelMode === 'items') {
     return (
       <>
@@ -598,6 +634,45 @@ function renderSelectedRoomPanel(
     )
   }
 
+  if (selectedRoomPanelMode === 'characters') {
+    return (
+      <>
+        <h3>{selectedRoom.roomName} Characters</h3>
+        {selectedRoomCharacters.length === 0 ? (
+          <p className="muted">No characters are currently assigned to this room.</p>
+        ) : (
+          <ul className="gg-item-list">
+            {selectedRoomCharacters.map((character) => (
+              <li key={character.characterId}>
+                <button
+                  type="button"
+                  className="gg-item-select-button"
+                  onClick={() => onSelectCharacterForEdit(character)}
+                  aria-label={`Edit ${character.characterName}`}
+                >
+                  <strong>{character.characterName}</strong>
+                  <span>{character.characterDescription || 'No description.'}</span>
+                </button>
+                {Array.isArray(character.characterContains) && character.characterContains.length > 0 && (
+                  <div className="gg-item-contents-block">
+                    <p className="gg-item-contents-title">Carries</p>
+                    <ul className="gg-item-contents-list">
+                      {character.characterContains.map((contentItemId) => (
+                        <li key={`${character.characterId}-${contentItemId}`}>
+                          <span className="gg-item-contents-static-text">{itemNameById(itemsById, contentItemId)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </>
+    )
+  }
+
   return (
     <>
       <h3>{selectedRoom.roomName}</h3>
@@ -614,7 +689,128 @@ function renderSelectedRoomPanel(
   )
 }
 
-function buildItemSaveResult({ gonfName, itemForm, roomsById, currentItems, currentSelectedRoomId }) {
+function getNormalizedCharacterContains(characterForm) {
+  return Array.isArray(characterForm.characterContains)
+    ? Array.from(new Set(characterForm.characterContains.filter(Boolean)))
+    : []
+}
+
+function validateCharacterContainsSelection(selectedContains, currentItems) {
+  const availableItemIds = new Set(currentItems.map((item) => String(item.itemId)))
+  const hasInvalidContents = selectedContains.some((itemId) => !availableItemIds.has(itemId))
+  return hasInvalidContents ? 'One or more selected carried items are invalid.' : null
+}
+
+function buildCharacterSaveResult({
+  gonfName,
+  characterForm,
+  rooms,
+  currentItems,
+  currentCharacters,
+}) {
+  if (!gonfName.trim()) {
+    return { error: 'Gonf Name is required before saving characters.' }
+  }
+
+  if (!characterForm.characterName.trim()) {
+    return { error: 'Character Name is required.' }
+  }
+
+  let nextRooms = rooms
+  let characterLocationId = null
+
+  if (characterForm.characterLocation === '') {
+    const ensuredSecretStorage = ensureSecretStorageRoom(rooms)
+    nextRooms = ensuredSecretStorage.rooms
+    characterLocationId = ensuredSecretStorage.roomId
+  } else {
+    characterLocationId = toNullableNumber(characterForm.characterLocation)
+    if (characterLocationId === null) {
+      return { error: 'Selected character room was not found.' }
+    }
+
+    const selectedRoom = nextRooms.find((room) => room.roomId === characterLocationId)
+    if (!selectedRoom) {
+      return { error: 'Selected character room was not found.' }
+    }
+
+    if (isSystemManagedRoom(selectedRoom)) {
+      return { error: `${selectedRoom.roomName} is system-managed and cannot be assigned manually.` }
+    }
+  }
+
+  const selectedContains = getNormalizedCharacterContains(characterForm)
+  const containsError = validateCharacterContainsSelection(selectedContains, currentItems)
+  if (containsError) {
+    return { error: containsError }
+  }
+
+  const selectedContainsSet = new Set(selectedContains.map(String))
+  const nextItems = currentItems.map((item) => {
+    const nextContents = Array.isArray(item.itemContents)
+      ? item.itemContents.filter((containedId) => !selectedContainsSet.has(String(containedId)))
+      : []
+
+    if (!selectedContainsSet.has(String(item.itemId))) {
+      return {
+        ...item,
+        itemContents: nextContents,
+      }
+    }
+
+    return {
+      ...item,
+      itemLocation: '',
+      itemContents: nextContents,
+    }
+  })
+
+  const editingCharacterId = toNullableNumber(characterForm.characterId)
+  const nextCharacterId = editingCharacterId ?? (Math.max(0, ...currentCharacters.map((character) => character.characterId)) + 1)
+
+  const savedCharacter = {
+    characterId: nextCharacterId,
+    characterName: characterForm.characterName.trim(),
+    characterDescription: characterForm.characterDescription.trim(),
+    characterLocation: String(characterLocationId),
+    characterWanderer: Boolean(characterForm.characterWanderer),
+    characterContains: selectedContains,
+  }
+
+  const normalizedCharacters = currentCharacters.map((character) => ({
+    ...character,
+    characterContains: Array.isArray(character.characterContains) ? character.characterContains.map(String) : [],
+  }))
+
+  const nextCharactersWithoutConflicts = normalizedCharacters.map((character) => {
+    if (character.characterId === nextCharacterId) {
+      return character
+    }
+
+    return {
+      ...character,
+      characterContains: character.characterContains.filter((itemId) => !selectedContainsSet.has(String(itemId))),
+    }
+  })
+
+  const nextCharacters = nextCharactersWithoutConflicts.some((character) => character.characterId === nextCharacterId)
+    ? nextCharactersWithoutConflicts.map((character) => (character.characterId === nextCharacterId ? savedCharacter : character))
+    : [...nextCharactersWithoutConflicts, savedCharacter]
+
+  const nextRoomsById = new Map(nextRooms.map((room) => [room.roomId, room]))
+  const locationName = roomNameById(nextRoomsById, characterLocationId)
+
+  return {
+    nextRooms,
+    nextItems,
+    nextCharacters,
+    nextSelectedRoomId: characterLocationId,
+    nextSelectedFloor: nextRoomsById.get(characterLocationId)?.roomFloor ?? 1,
+    message: `Saved character ${savedCharacter.characterName} to ${locationName}.`,
+  }
+}
+
+function buildItemSaveResult({ gonfName, itemForm, roomsById, currentItems, currentCharacters, currentSelectedRoomId }) {
   if (!gonfName.trim()) {
     return { error: 'Gonf Name is required before saving items.' }
   }
@@ -651,6 +847,7 @@ function buildItemSaveResult({ gonfName, itemForm, roomsById, currentItems, curr
   const itemValue = valueResult.value
 
   const selectedContents = getNormalizedContents(itemForm)
+  const selectedContentsSet = new Set(selectedContents.map(String))
 
   const contentsError = validateContentsSelection(itemForm, selectedContents, currentItems)
   if (contentsError) {
@@ -671,12 +868,47 @@ function buildItemSaveResult({ gonfName, itemForm, roomsById, currentItems, curr
     itemContents: itemForm.canHoldItems ? selectedContents : [],
   }
 
-  const nextItems = currentItems.some((item) => item.itemId === nextItemId)
-    ? currentItems.map((item) => (item.itemId === nextItemId ? savedItem : item))
-    : [...currentItems, savedItem]
+  const normalizedItems = currentItems.map((item) => {
+    if (item.itemId === nextItemId) {
+      return item
+    }
+
+    const nextContents = Array.isArray(item.itemContents)
+      ? item.itemContents.filter((containedId) => !selectedContentsSet.has(String(containedId)))
+      : []
+
+    if (selectedContentsSet.has(String(item.itemId))) {
+      return {
+        ...item,
+        itemLocation: '',
+        itemContents: nextContents,
+      }
+    }
+
+    return {
+      ...item,
+      itemContents: nextContents,
+    }
+  })
+
+  const nextItems = normalizedItems.some((item) => item.itemId === nextItemId)
+    ? normalizedItems.map((item) => (item.itemId === nextItemId ? savedItem : item))
+    : [...normalizedItems, savedItem]
+
+  const nextCharacters = currentCharacters.map((character) => {
+    if (!Array.isArray(character.characterContains)) {
+      return character
+    }
+
+    return {
+      ...character,
+      characterContains: character.characterContains.filter((itemId) => !selectedContentsSet.has(String(itemId))),
+    }
+  })
 
   return {
     nextItems,
+    nextCharacters,
     nextSelectedRoomId: itemLocation ?? currentSelectedRoomId,
     message: `Saved item ${savedItem.itemName} to ${itemLocation ? roomNameById(roomsById, itemLocation) : 'the Gonf without a room assignment'}.`,
   }
@@ -706,10 +938,15 @@ function parseLoadedGonf(payload) {
     ? payload.items.map((rawItem, index) => mapItemForState(rawItem, index)).filter(Boolean)
     : []
 
+  const characters = Array.isArray(payload.characters)
+    ? payload.characters.map((rawCharacter, index) => mapCharacterForState(rawCharacter, index)).filter(Boolean)
+    : []
+
   return {
     gonfName: String(payload.gonfName ?? ''),
     rooms,
     items,
+    characters,
   }
 }
 
@@ -717,6 +954,7 @@ export default function GonfGenerator() {
   const [gonfName, setGonfName] = useState('')
   const [rooms, setRooms] = useState([])
   const [items, setItems] = useState([])
+  const [characters, setCharacters] = useState([])
   const [form, setForm] = useState(createEmptyForm())
   const [itemForm, setItemForm] = useState(createEmptyItemForm())
   const [characterForm, setCharacterForm] = useState(createEmptyCharacterForm())
@@ -754,6 +992,20 @@ export default function GonfGenerator() {
 
     return counts
   }, [items])
+
+  const roomCharacterCounts = useMemo(() => {
+    const counts = new Map()
+
+    for (const character of characters) {
+      if (!character.characterLocation) {
+        continue
+      }
+
+      counts.set(character.characterLocation, (counts.get(character.characterLocation) ?? 0) + 1)
+    }
+
+    return counts
+  }, [characters])
 
   const gridColumns = useMemo(
     () => Math.max(5, ...positionedFloorRooms.map((room) => room.x + 1), 1),
@@ -802,9 +1054,19 @@ export default function GonfGenerator() {
     () => items.filter((item) => item.itemLocation && Number(item.itemLocation) === selectedRoom?.roomId),
     [items, selectedRoom],
   )
+  const selectedRoomCharacters = useMemo(
+    () =>
+      characters.filter(
+        (character) => character.characterLocation && Number(character.characterLocation) === selectedRoom?.roomId,
+      ),
+    [characters, selectedRoom],
+  )
 
   const roomOptions = useMemo(
-    () => rooms.map((room) => ({ value: room.roomId, label: room.roomName })),
+    () =>
+      rooms
+        .filter((room) => !isSystemManagedRoom(room))
+        .map((room) => ({ value: room.roomId, label: room.roomName })),
     [rooms],
   )
 
@@ -822,6 +1084,11 @@ export default function GonfGenerator() {
         .filter((item) => String(item.itemId) !== String(itemForm.itemId ?? ''))
         .map((item) => ({ value: String(item.itemId), label: item.itemName })),
     [items, itemForm.itemId],
+  )
+
+  const characterContainsOptions = useMemo(
+    () => items.map((item) => ({ value: String(item.itemId), label: item.itemName })),
+    [items],
   )
 
   const onFormChange = (field, value) => {
@@ -849,11 +1116,17 @@ export default function GonfGenerator() {
     onItemFormChange('itemContents', selectedValues)
   }
 
+  const onCharacterContainsChange = (event) => {
+    const selectedValues = Array.from(event.target.selectedOptions, (option) => option.value)
+    onCharacterFormChange('characterContains', selectedValues)
+  }
+
   const onCreateNewGonf = () => {
     // GONF-006C: this action intentionally clears all in-memory Gonf and map state.
     setGonfName('')
     setRooms([])
     setItems([])
+    setCharacters([])
     setForm(createEmptyForm())
     setItemForm(createEmptyItemForm())
     setCharacterForm(createEmptyCharacterForm())
@@ -877,6 +1150,11 @@ export default function GonfGenerator() {
     setStatusMessage('Cleared item form fields.')
   }
 
+  const onClearCharacterForm = () => {
+    setCharacterForm(createEmptyCharacterForm())
+    setStatusMessage('Cleared character form fields.')
+  }
+
   const onSelectRoom = (room) => {
     setSelectedRoomId(room.roomId)
     setSelectedRoomPanelMode('room')
@@ -898,6 +1176,12 @@ export default function GonfGenerator() {
     setSelectedRoomId(room.roomId)
     setSelectedRoomPanelMode('items')
     setStatusMessage(`Showing items found in ${room.roomName}.`)
+  }
+
+  const onShowRoomCharacters = (room) => {
+    setSelectedRoomId(room.roomId)
+    setSelectedRoomPanelMode('characters')
+    setStatusMessage(`Showing characters found in ${room.roomName}.`)
   }
 
   const onSelectItemForEdit = (item) => {
@@ -934,6 +1218,32 @@ export default function GonfGenerator() {
     }
 
     onSelectItemForEdit(containedItem)
+  }
+
+  const onSelectCharacterForEdit = (character) => {
+    const targetRoom = toNullableNumber(character.characterLocation)
+      ? roomsById.get(toNullableNumber(character.characterLocation))
+      : null
+
+    setActiveTab('character')
+    setCharacterForm({
+      characterId: character.characterId,
+      characterName: character.characterName,
+      characterDescription: character.characterDescription ?? '',
+      characterLocation: character.characterLocation ?? '',
+      characterWanderer: Boolean(character.characterWanderer),
+      characterContains: Array.isArray(character.characterContains)
+        ? character.characterContains.map(String)
+        : [],
+    })
+
+    if (targetRoom) {
+      setSelectedRoomId(targetRoom.roomId)
+      setActiveFloor(targetRoom.roomFloor)
+      setSelectedRoomPanelMode('characters')
+    }
+
+    setStatusMessage(`Loaded character ${character.characterName} into the character form.`)
   }
 
   const onJumpToVerticalExit = (event, room, direction) => {
@@ -1059,6 +1369,7 @@ export default function GonfGenerator() {
       },
       roomsById: validationRoomsById,
       currentItems: items,
+      currentCharacters: characters,
       currentSelectedRoomId: selectedRoomId,
     })
 
@@ -1068,10 +1379,35 @@ export default function GonfGenerator() {
     }
 
     setItems(itemSaveResult.nextItems)
+    setCharacters(itemSaveResult.nextCharacters)
     setItemForm(createEmptyItemForm())
     setSelectedRoomPanelMode('items')
     setSelectedRoomId(itemSaveResult.nextSelectedRoomId)
     setStatusMessage(itemSaveResult.message)
+  }
+
+  const onSaveCharacter = () => {
+    const characterSaveResult = buildCharacterSaveResult({
+      gonfName,
+      characterForm,
+      rooms,
+      currentItems: items,
+      currentCharacters: characters,
+    })
+
+    if (characterSaveResult.error) {
+      setStatusMessage(characterSaveResult.error)
+      return
+    }
+
+    setRooms(characterSaveResult.nextRooms)
+    setItems(characterSaveResult.nextItems)
+    setCharacters(characterSaveResult.nextCharacters)
+    setCharacterForm(createEmptyCharacterForm())
+    setSelectedRoomPanelMode('characters')
+    setSelectedRoomId(characterSaveResult.nextSelectedRoomId)
+    setActiveFloor(characterSaveResult.nextSelectedFloor)
+    setStatusMessage(characterSaveResult.message)
   }
 
   const onSaveGonf = async () => {
@@ -1079,6 +1415,22 @@ export default function GonfGenerator() {
       setStatusMessage('Gonf Name is required before saving the Gonf file.')
       return
     }
+
+    const draftCharacters = characterForm.characterName.trim()
+      ? [
+          {
+            characterId: 1,
+            characterName: characterForm.characterName.trim(),
+            characterDescription: characterForm.characterDescription.trim(),
+            characterLocation:
+              characterForm.characterLocation === '' ? null : Number(characterForm.characterLocation),
+            characterWanderer: Boolean(characterForm.characterWanderer),
+            characterContains: Array.isArray(characterForm.characterContains)
+              ? characterForm.characterContains.map(Number).filter((itemId) => Number.isFinite(itemId))
+              : [],
+          },
+        ]
+      : []
 
     const savePayload = {
       gonfName: gonfName.trim(),
@@ -1109,6 +1461,16 @@ export default function GonfGenerator() {
         location: item.itemLocation === '' ? null : Number(item.itemLocation),
         contents: Array.isArray(item.itemContents)
           ? item.itemContents.map(Number).filter((itemId) => Number.isFinite(itemId))
+          : [],
+      })),
+      characters: (characters.length > 0 ? characters : draftCharacters).map((character, index) => ({
+        characterId: character.characterId ?? index + 1,
+        characterName: character.characterName,
+        description: character.characterDescription ?? '',
+        location: character.characterLocation === '' || character.characterLocation === null ? null : Number(character.characterLocation),
+        wanderer: Boolean(character.characterWanderer),
+        contains: Array.isArray(character.characterContains)
+          ? character.characterContains.map(Number).filter((itemId) => Number.isFinite(itemId))
           : [],
       })),
     }
@@ -1152,9 +1514,21 @@ export default function GonfGenerator() {
       setGonfName(inferredName)
       setRooms(loaded.rooms)
       setItems(loaded.items)
+      setCharacters(loaded.characters)
       setForm(createEmptyForm())
       setItemForm(createEmptyItemForm())
-      setCharacterForm(createEmptyCharacterForm())
+      setCharacterForm(
+        loaded.characters[0]
+          ? {
+              characterId: loaded.characters[0].characterId,
+              characterName: loaded.characters[0].characterName,
+              characterDescription: loaded.characters[0].characterDescription,
+              characterLocation: loaded.characters[0].characterLocation,
+              characterWanderer: loaded.characters[0].characterWanderer,
+              characterContains: loaded.characters[0].characterContains,
+            }
+          : createEmptyCharacterForm(),
+      )
       setSelectedRoomPanelMode('room')
       setSelectedRoomId(loaded.rooms[0]?.roomId ?? null)
       setActiveFloor(loaded.rooms[0]?.roomFloor ?? 1)
@@ -1465,7 +1839,7 @@ export default function GonfGenerator() {
                     </option>
                   ))}
                 </select>
-                <small>All rooms are available regardless of floor.</small>
+                <small>Assignable rooms are available regardless of floor.</small>
               </label>
 
               {itemForm.canHoldItems && (
@@ -1501,16 +1875,81 @@ export default function GonfGenerator() {
         )}
 
         {activeTab === 'character' && (
-          <div className="gg-item-form-grid">
-            <label className="gg-field gg-wide">
-              <span>Character Name</span>
-              <input
-                type="text"
-                placeholder="Character name"
-                value={characterForm.characterName}
-                onChange={(event) => onCharacterFormChange('characterName', event.target.value)}
-              />
-            </label>
+          <div className="gg-tab-content">
+            <div className="gg-item-form-grid">
+              <input type="hidden" name="characterId" value={characterForm.characterId ?? ''} />
+
+              <label className="gg-field gg-wide">
+                <span>Character Name</span>
+                <input
+                  type="text"
+                  placeholder="Character name"
+                  value={characterForm.characterName}
+                  onChange={(event) => onCharacterFormChange('characterName', event.target.value)}
+                />
+              </label>
+
+              <label className="gg-field gg-wide">
+                <span>Description</span>
+                <textarea
+                  rows={3}
+                  value={characterForm.characterDescription}
+                  onChange={(event) => onCharacterFormChange('characterDescription', event.target.value)}
+                />
+              </label>
+
+              <label className="gg-field gg-wide">
+                <span>Location</span>
+                <select
+                  value={characterForm.characterLocation}
+                  onChange={(event) => onCharacterFormChange('characterLocation', event.target.value)}
+                >
+                  <option value="">Unassigned</option>
+                  {roomOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <small>System-managed rooms are excluded from manual assignment.</small>
+              </label>
+
+              <label className="gg-field gg-checkbox-field">
+                <span>Wanderer</span>
+                <input
+                  type="checkbox"
+                  checked={Boolean(characterForm.characterWanderer)}
+                  onChange={(event) => onCharacterFormChange('characterWanderer', event.target.checked)}
+                />
+              </label>
+
+              <label className="gg-field gg-wide">
+                <span>Contains</span>
+                <select
+                  className="gg-multi-select"
+                  multiple
+                  size={Math.min(6, Math.max(3, characterContainsOptions.length || 3))}
+                  value={characterForm.characterContains}
+                  onChange={onCharacterContainsChange}
+                >
+                  {characterContainsOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <small>Select one or more items carried by this character.</small>
+              </label>
+            </div>
+
+            <div className="gg-button-row">
+              <button type="button" className="gg-save-button" onClick={onSaveCharacter}>
+                Save Character
+              </button>
+              <button type="button" className="gg-clear-button" onClick={onClearCharacterForm}>
+                Clear
+              </button>
+            </div>
           </div>
         )}
       </section>
@@ -1589,6 +2028,20 @@ export default function GonfGenerator() {
                       i
                     </button>
                   )}
+                  {roomCharacterCounts.get(String(room.roomId)) > 0 && (
+                    <button
+                      type="button"
+                      className="gg-room-character-indicator"
+                      aria-label={`View characters found in ${room.roomName}`}
+                      title={`View characters found in ${room.roomName}`}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onShowRoomCharacters(room)
+                      }}
+                    >
+                      c
+                    </button>
+                  )}
                   {room.exits.up && (
                     <button
                       type="button"
@@ -1617,15 +2070,17 @@ export default function GonfGenerator() {
 
             {selectedRoom && (
               <aside className="gg-room-popover" aria-live="polite">
-                {renderSelectedRoomPanel(
+                {renderSelectedRoomPanel({
                   selectedRoomPanelMode,
                   selectedRoom,
                   selectedRoomItems,
+                  selectedRoomCharacters,
                   roomsById,
                   itemsById,
                   onSelectItemForEdit,
                   onSelectContainedItem,
-                )}
+                  onSelectCharacterForEdit,
+                })}
               </aside>
             )}
           </div>

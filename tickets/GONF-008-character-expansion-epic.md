@@ -17,11 +17,13 @@ Business wants the Character tab to move beyond name-only entry and support comp
 ## In Scope (Epic Level)
 
 1. Character form fields: `Character Name`, `Description`, `Location`, `Wanderer`, and `Contains` (items carried).
-2. Character save behavior where empty location defaults to `Secret Storage`.
+2. Character save behavior where empty location defaults to `Secret Storage`, and `Secret Storage` is auto-created if missing.
 3. Validation that explicit location must reference a valid room.
-4. Map room indicators showing presence of one or more characters.
-5. Room Details panel behavior for character list display and carried-item details when character indicators are selected.
-6. Save/Load persistence updates for expanded character data model.
+4. Item ownership normalization where an item can only be assigned in one place at a time (room location or one character), with prior references removed on reassignment.
+5. Wanderer is persistence-only for this epic (no movement behavior).
+6. Map room indicators showing presence of one or more characters.
+7. Room Details panel behavior for character list display and carried-item details when character indicators are selected.
+8. Save/Load persistence updates for expanded character data model.
 
 ## Out of Scope (Epic Level)
 
@@ -34,8 +36,10 @@ Business wants the Character tab to move beyond name-only entry and support comp
 
 1. Final character field definitions and validation rules.
 2. Clarified interaction behavior for character icon/list selection in the room details panel.
-3. Confirmation of `Secret Storage` defaulting requirements when location is not provided.
-4. Acceptance-ready decomposition for backend/frontend/QA child stories.
+3. Confirmation that character save auto-creates `Secret Storage` when required.
+4. Finalized item reassignment rule where assigning an item to a character removes prior room/character references.
+5. Confirmation that Wanderer is persistence-only for this epic.
+6. Acceptance-ready decomposition for backend/frontend/QA child stories.
 
 ## Development Workflow Rule
 

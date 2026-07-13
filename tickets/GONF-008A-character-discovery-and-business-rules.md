@@ -10,10 +10,13 @@ Define the expanded character model and interaction rules so implementation is u
 2. Character name is required.
 3. Location can be empty at authoring time.
 4. If location is provided, it must reference a valid existing roomId.
-5. If location is empty at save time, character defaults to Secret Storage.
+5. If location is empty at save time, character defaults to Secret Storage, and Secret Storage is created if it does not exist.
 6. Contains values must reference valid existing itemIds.
-7. A character can carry zero or more items in contains.
-8. Character list shown for a room is derived from character location.
+7. An itemId can be assigned to only one place at a time: either a room location or one character contains list.
+8. Reassigning an itemId removes all previous room/character references to that itemId.
+9. A character can carry zero or more items in contains.
+10. Wanderer is persisted only in this epic; behavior tied to wanderer=true is out of scope for now.
+11. Character list shown for a room is derived from character location.
 
 ## User Story
 
@@ -24,18 +27,21 @@ So backend and frontend teams implement the same rules.
 ## Acceptance Criteria
 
 1. Character field definitions are finalized with types and requiredness.
-2. Location behavior is finalized for optional assignment, defaulting to Secret Storage, and invalid roomId handling.
-3. Contains behavior is finalized for valid item references and empty-list handling.
-4. UI interaction behavior for character icon click and room-details listing is finalized.
-5. Child tickets 008B/008C/008D inherit finalized rules.
+2. Location behavior is finalized for optional assignment, defaulting to Secret Storage, auto-creating Secret Storage when missing, and invalid roomId handling.
+3. Contains behavior is finalized for valid item references, one-place assignment, reassignment cleanup, and empty-list handling.
+4. Wanderer scope is finalized as persistence-only for this epic.
+5. UI interaction behavior for character icon click and room-details listing is finalized.
+6. Child tickets 008B/008C/008D inherit finalized rules.
 
 ## Edge Cases and Error Handling
 
 1. Character location references a non-existent roomId.
 2. Contains references one or more non-existent itemIds.
 3. Secret Storage room is missing before character save with empty location.
-4. Character with empty contains list.
-5. Character with long description or name.
+4. Item currently assigned to a room is reassigned to a character.
+5. Item currently assigned to one character is reassigned to another character.
+6. Character with empty contains list.
+7. Character with long description or name.
 
 ## Non-Functional Requirements
 
@@ -58,8 +64,7 @@ So backend and frontend teams implement the same rules.
 ## Open Questions
 
 1. Are character names unique globally in a Gonf?
-2. Should contains allow duplicate itemIds?
-3. Maximum supported contains list size for UI display.
+2. Maximum supported contains list size for UI display.
 
 ## Architecture Notes
 
