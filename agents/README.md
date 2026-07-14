@@ -52,9 +52,16 @@ Each role includes scope, deliverables, and gates so collaboration is predictabl
 
 To support unrelated projects with the same team workflow, this repository now includes a project-agnostic template pack in `agents/templates`.
 
+The reusable kit now includes two profile variants:
+
+- `agents/templates/general`: default generalized team profile.
+- `agents/templates/legacy`: legacy-aware profile with stricter discovery, compatibility, and regression controls.
+
+Both profiles keep the same role structure so either one can still function in mixed project contexts.
+
 How to use it in a new project:
 
-1. Copy all files from `agents/templates` into the new project's `agents` folder.
+1. Choose one profile folder (`general` or `legacy`) and copy its files into the new project's `agents` folder.
 2. Replace tokens in each file:
 	- `{{PROJECT_NAME}}`
 	- `{{BACKEND_PATH}}`

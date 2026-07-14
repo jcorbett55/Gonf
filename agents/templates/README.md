@@ -4,14 +4,21 @@ This folder contains project-agnostic role definitions and operating model guida
 
 Use this kit when starting a new project where you want the same collaborative team pattern used in Gonf, without product-specific wording.
 
+## Project Profiles
+
+Two profile variants are provided:
+
+- `general/`: Default profile for most projects.
+- `legacy/`: Adds discovery, compatibility, and regression controls for legacy-heavy systems.
+
+Both profiles keep the same role handoffs and quality gates so either profile remains usable across mixed codebases.
+
 ## Files
 
-- `business-analyst.agent.md`
-- `dev-lead.agent.md`
-- `developer.agent.md`
-- `frontend-developer.agent.md`
-- `qa.agent.md`
-- `project-delivery-playbook.md`
+- `general/*.agent.md`
+- `general/project-delivery-playbook.md`
+- `legacy/*.agent.md`
+- `legacy/project-delivery-playbook.md`
 - `team-operating-model.template.md`
 
 ## Token Replacement
@@ -25,11 +32,12 @@ Before using these files in a new repository, replace the following tokens:
 ## Suggested Adoption Steps
 
 1. Create an `agents` directory in the target project.
-2. Copy all files from this folder.
-3. Replace tokens in all copied files.
-4. Align role descriptions with stack-specific tools if needed.
-5. Share the adopted workflow with your team before ticket execution starts.
-6. Keep `project-delivery-playbook.md` next to the role files so individual agents can operate with the same assumptions even when used alone.
+2. Choose one profile folder: `general` or `legacy`.
+3. Copy the selected profile files into the target `agents` directory.
+4. Replace tokens in all copied files.
+5. Align role descriptions with stack-specific tools if needed.
+6. Share the adopted workflow with your team before ticket execution starts.
+7. Keep `project-delivery-playbook.md` next to the role files so individual agents can operate with the same assumptions even when used alone.
 
 ## Notes
 

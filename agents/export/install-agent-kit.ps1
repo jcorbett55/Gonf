@@ -9,11 +9,15 @@ param(
     [string]$BackendPath,
 
     [Parameter(Mandatory = $true)]
-    [string]$FrontendPath
+    [string]$FrontendPath,
+
+    [ValidateSet("General", "Legacy")]
+    [string]$ProjectType = "General"
 )
 
 $templateRoot = Join-Path $PSScriptRoot "workspace-template"
-$sourceGithubPath = Join-Path $templateRoot ".github"
+$profileName = $ProjectType.ToLowerInvariant()
+$sourceGithubPath = Join-Path $templateRoot "profiles/$profileName/.github"
 $targetGithubPath = Join-Path $TargetRepoPath ".github"
 
 if (-not (Test-Path $TargetRepoPath)) {
@@ -45,4 +49,4 @@ foreach ($file in $markdownFiles) {
     Set-Content -Path $file.FullName -Value $content -NoNewline
 }
 
-Write-Host "Agent kit installed to $targetGithubPath"
+Write-Host "Agent kit installed to $targetGithubPath using project type '$ProjectType'"
