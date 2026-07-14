@@ -48,6 +48,23 @@ app.UseExceptionHandler(errorApp =>
         var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("GlobalException");
         var exception = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
 
+        if (exception is BadHttpRequestException badRequestException)
+        {
+            logger.LogWarning(badRequestException, "Invalid request payload.");
+
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            context.Response.ContentType = "application/json";
+
+            var badRequestResponse = ApiResponse.CreateError(
+                StatusCodes.Status400BadRequest,
+                "INVALID_REQUEST_BODY",
+                "The request body contains invalid or out-of-range values. Please review item and character fields and try again."
+            );
+
+            await context.Response.WriteAsJsonAsync(badRequestResponse);
+            return;
+        }
+
         if (exception is not null)
         {
             logger.LogError(exception, "Unhandled exception while processing request.");

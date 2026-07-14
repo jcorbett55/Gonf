@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 
@@ -101,4 +102,58 @@ public class SaveGonfEndpointTests : IClassFixture<WebApplicationFactory<Program
             }
         }
     }
+
+        [Fact]
+        public async Task PostSaveWithOutOfRangeItemValue_ReturnsBadRequestWithValidationMessage()
+        {
+                using var client = _factory.CreateClient();
+
+                var requestJson = """
+                {
+                    "gonfName": "OutOfRangeSave",
+                    "rooms": [
+                        {
+                            "roomId": 1,
+                            "roomName": "Room A",
+                            "roomDescription": "First room",
+                            "roomFloor": 1,
+                            "exits": {
+                                "north": null,
+                                "east": null,
+                                "south": null,
+                                "west": null,
+                                "up": null,
+                                "down": null
+                            }
+                        }
+                    ],
+                    "items": [
+                        {
+                            "itemId": 1,
+                            "itemName": "Key",
+                            "itemWeight": 1.5,
+                            "itemDescription": "Door key",
+                            "itemValue": 1e100,
+                            "canHoldItems": false,
+                            "canBeCarried": true,
+                            "location": 1,
+                            "contents": []
+                        }
+                    ],
+                    "characters": []
+                }
+                """;
+
+                using var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
+                var response = await client.PostAsync("/api/gonf/save", content);
+
+                Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+                using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                var root = document.RootElement;
+
+                Assert.False(root.GetProperty("success").GetBoolean());
+                Assert.Equal(400, root.GetProperty("code").GetInt32());
+                Assert.Equal("INVALID_REQUEST_BODY", root.GetProperty("errors")[0].GetProperty("code").GetString());
+        }
 }

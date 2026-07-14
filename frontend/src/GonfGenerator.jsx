@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5131'
 const floors = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5]
+const DOTNET_DECIMAL_MAX = 7.922816251426433e28
 const planarDirections = ['north', 'east', 'south', 'west']
 const allDirections = ['north', 'east', 'south', 'west', 'up', 'down']
 const SYSTEM_MANAGED_ROOMS = [
@@ -474,6 +475,15 @@ function roomToFormState(room) {
   }
 }
 
+function normalizeOptionalNumericForState(rawValue) {
+  if (rawValue === null || rawValue === undefined || rawValue === '') {
+    return ''
+  }
+
+  const numericValue = Number(rawValue)
+  return Number.isFinite(numericValue) ? numericValue : ''
+}
+
 function mapItemForState(rawItem, index) {
   const itemLocation = rawItem.location ?? rawItem.itemLocation ?? rawItem.roomId ?? ''
   const contentsSource = Array.isArray(rawItem.contents) ? rawItem.contents : []
@@ -496,9 +506,9 @@ function mapItemForState(rawItem, index) {
   return {
     itemId: Number(rawItem.itemId ?? rawItem.id ?? index + 1),
     itemName: String(rawItem.itemName ?? rawItem.name ?? ''),
-    itemWeight: rawItem.itemWeight ?? rawItem.weight ?? '',
+    itemWeight: normalizeOptionalNumericForState(rawItem.itemWeight ?? rawItem.weight),
     itemDescription: String(rawItem.itemDescription ?? rawItem.description ?? ''),
-    itemValue: rawItem.itemValue ?? rawItem.value ?? '',
+    itemValue: normalizeOptionalNumericForState(rawItem.itemValue ?? rawItem.value),
     canHoldItems: Boolean(rawItem.canHoldItems ?? rawItem.canHold ?? false),
     canBeCarried: Boolean(rawItem.canBeCarried ?? rawItem.canCarry ?? false),
     itemLocation: itemLocation === null || itemLocation === undefined ? '' : String(itemLocation),
@@ -548,6 +558,14 @@ function getValidatedNumericValue(rawValue, label) {
   const normalizedValue = rawValue === '' ? null : Number(rawValue)
   if (normalizedValue !== null && Number.isNaN(normalizedValue)) {
     return { error: `${label} must be a number.` }
+  }
+
+  if (normalizedValue !== null && !Number.isFinite(normalizedValue)) {
+    return { error: `${label} must be a finite number.` }
+  }
+
+  if (normalizedValue !== null && Math.abs(normalizedValue) > DOTNET_DECIMAL_MAX) {
+    return { error: `${label} is out of supported range.` }
   }
 
   return { value: normalizedValue }
@@ -1432,6 +1450,30 @@ export default function GonfGenerator() {
         ]
       : []
 
+    const validatedItems = []
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index]
+      const itemLabel = item.itemName?.trim() || `Item ${index + 1}`
+
+      const weightResult = getValidatedNumericValue(item.itemWeight, `Item Weight for ${itemLabel}`)
+      if (weightResult.error) {
+        setStatusMessage(weightResult.error)
+        return
+      }
+
+      const valueResult = getValidatedNumericValue(item.itemValue, `Item Value for ${itemLabel}`)
+      if (valueResult.error) {
+        setStatusMessage(valueResult.error)
+        return
+      }
+
+      validatedItems.push({
+        ...item,
+        itemWeight: weightResult.value,
+        itemValue: valueResult.value,
+      })
+    }
+
     const savePayload = {
       gonfName: gonfName.trim(),
       rooms: rooms.map((room) => ({
@@ -1450,7 +1492,7 @@ export default function GonfGenerator() {
           down: room.exits.down,
         },
       })),
-      items: items.map((item) => ({
+      items: validatedItems.map((item) => ({
         itemId: item.itemId,
         itemName: item.itemName,
         itemWeight: item.itemWeight,
