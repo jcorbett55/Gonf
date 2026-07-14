@@ -11,6 +11,9 @@ Create Gonf V2 in a separate repository with full V1.0 feature parity (rooms, it
    - Phase 1: V1.0 parity in V2 repo.
    - Phase 2: Room image generation workflow.
 3. Phase 2 begins only after parity acceptance is complete.
+4. Parity acceptance gate requires both:
+   - Existing V1 automated test suites pass in V2.
+   - QA parity checklist artifact is completed and signed off.
 
 ## Business Context
 
@@ -65,6 +68,11 @@ Business wants to preserve the stable V1 baseline while enabling a visual evolut
 1. Delivered V1 baseline behavior from GONF-006, GONF-007, and GONF-008.
 2. Business owner confirmation on image-generation acceptance behavior.
 3. QA sign-off for parity before room image release.
+
+## Gate Criteria
+
+1. No room-image feature development starts before parity gate sign-off.
+2. Room-image release requires parity gate plus image-feature QA sign-off.
 
 ## Traceability
 

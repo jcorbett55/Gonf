@@ -26,8 +26,15 @@ Finalize V2 rules so teams can implement a separate V2 repository with complete 
 7. Folder creation behavior:
    - If path components do not exist, system creates them before writing image files.
 8. File naming behavior:
-   - Name must tie image to room and retry attempt count (example: kitchen_00.png).
+   - Name must tie image to room and retry attempt count.
+   - Canonical naming format is r[roomId]_[room-slug]_[attempt].png (example: r0007_kitchen_00.png).
 9. Gonf JSON contract includes room-to-image association and retry/finalization metadata needed for reload consistency.
+10. Candidate image lifecycle behavior:
+   - Candidate images are temporary until Checkmark or Save Gonf auto-finalize.
+   - Save Gonf during in-flight generation waits for generation completion, then finalizes latest completed candidate.
+11. Retry behavior:
+   - Retry increments attempt index and uses new generation seed/model invocation.
+   - Visual difference is best-effort and not guaranteed.
 
 ## User Story
 
@@ -43,6 +50,7 @@ So backend, frontend, and QA can deliver against one unambiguous definition.
 4. Save Gonf auto-finalization rule is finalized.
 5. JSON field definitions for room image metadata are finalized.
 6. Child tickets 009B/009C/009D inherit finalized rules with no unresolved ambiguity.
+7. Parity gate definition is finalized as: V1 automated tests pass plus QA parity checklist sign-off.
 
 ## Edge Cases and Error Handling
 
@@ -72,8 +80,22 @@ So backend, frontend, and QA can deliver against one unambiguous definition.
 
 ## Open Questions
 
-1. Maximum retry attempts allowed per room in V2.0 (or unlimited).
-2. Whether previous attempts are retained or pruned after finalization.
+None at this time.
+
+## Decision Log
+
+1. Retry attempts are allowed without a fixed maximum in V2.0.
+   - Owner: Business Owner
+   - Decision Date: 2026-07-14
+2. Save Gonf during in-flight generation waits for completion and finalizes the latest completed candidate.
+   - Owner: Business Owner
+   - Decision Date: 2026-07-14
+3. Filename convention is finalized as r[roomId]_[room-slug]_[attempt].png.
+   - Owner: Business Owner
+   - Decision Date: 2026-07-14
+4. Retry behavior requires incremented attempt index and new generation invocation; visual uniqueness is best-effort.
+   - Owner: Business Owner
+   - Decision Date: 2026-07-14
 
 ## Architecture Notes
 
@@ -99,7 +121,7 @@ So backend, frontend, and QA can deliver against one unambiguous definition.
 
 ## Status
 
-- Current Status: Groomed
+- Current Status: Ready for Dev
 - Owner: Business Analyst
 - Last Updated: 2026-07-14
 - Branch Naming Target: feature/GONF-009A-v2-discovery-and-parity-image-business-rules

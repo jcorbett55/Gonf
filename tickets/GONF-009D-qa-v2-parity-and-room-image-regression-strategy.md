@@ -31,6 +31,11 @@ So V2 adds visuals without destabilizing existing functionality.
 8. Load behavior validates room-image association persistence.
 9. Negative-path tests cover provider failures, missing files, and permissions errors.
 10. QA evidence includes pass/fail cycles and defect links.
+11. QA parity checklist artifact is published and signed off before room-image test stage starts.
+12. V2 release gate thresholds are defined and met:
+   - 100% pass on agreed critical-path automated tests.
+   - 0 open Sev1/Sev2 defects.
+   - All parity checklist items marked pass or accepted with written waiver.
 
 ## Edge Cases and Error Handling
 
@@ -60,8 +65,16 @@ So V2 adds visuals without destabilizing existing functionality.
 
 ## Open Questions
 
-1. Minimum automated coverage threshold for V2 release gate.
-2. Whether visual snapshot tests are required for room details image panel.
+None at this time.
+
+## Decision Log
+
+1. Visual snapshot tests for room details image panel are required for finalized-state rendering only.
+   - Owner: QA Lead
+   - Decision Date: 2026-07-14
+2. Release gate thresholds are finalized per acceptance criteria.
+   - Owner: QA Lead
+   - Decision Date: 2026-07-14
 
 ## Architecture Notes
 
@@ -88,7 +101,7 @@ So V2 adds visuals without destabilizing existing functionality.
 
 ## Status
 
-- Current Status: Groomed
+- Current Status: Ready for QA
 - Owner: QA
 - Last Updated: 2026-07-14
 - Branch Naming Target: feature/GONF-009D-qa-v2-parity-and-room-image-regression-strategy

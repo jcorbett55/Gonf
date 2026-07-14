@@ -17,6 +17,8 @@ Deliver V2 frontend with full V1 parity and add room image preview controls in r
 6. Save Gonf triggers backend auto-finalization for rooms with unconfirmed candidates.
 7. Reloaded Gonf displays associated finalized room image when room details open.
 8. UX should clearly indicate states: generating, candidate ready, finalized, error.
+9. Save Gonf clicked during image generation must show "finalizing image" progress and complete after backend wait/finalize behavior finishes.
+10. Retry during in-flight generation is disabled until current generation resolves.
 
 ## User Story
 
@@ -35,6 +37,14 @@ So room visuals are consistent and under my control before and after saving.
 7. Loading an existing Gonf repopulates room image associations.
 8. Error states are actionable and do not break room editing workflow.
 9. Accessibility support is present for preview controls (keyboard and labels).
+10. UI state machine is explicitly implemented and testable for states:
+  - idle (no image)
+  - generating
+  - candidate-ready
+  - finalized
+  - error
+11. Retry control is disabled while generating and enabled only in candidate-ready or finalized states.
+12. Save Gonf flow surfaces wait/finalize progress when room generation is in-flight.
 
 ## Edge Cases and Error Handling
 
@@ -92,7 +102,7 @@ So room visuals are consistent and under my control before and after saving.
 
 ## Status
 
-- Current Status: Groomed
+- Current Status: Ready for Dev
 - Owner: Frontend Developer
 - Last Updated: 2026-07-14
 - Branch Naming Target: feature/GONF-009C-ui-parity-and-room-image-preview-controls

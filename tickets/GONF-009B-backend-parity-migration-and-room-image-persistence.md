@@ -11,12 +11,15 @@ Deliver backend support for V2 by preserving full V1 parity and adding room imag
 3. Retry requests generate a new candidate and increment attempt index.
 4. Confirm requests finalize current candidate image for the room.
 5. Save Gonf auto-finalizes any existing unconfirmed candidate image for each room.
-6. Finalized image files are written under required folder path:
+6. Save Gonf invoked during in-flight generation waits for generation completion and finalizes the latest completed candidate.
+7. Retry generates a new candidate using a new generation invocation (seed/model metadata recorded); visual uniqueness is best-effort.
+8. Finalized image filename format is r[roomId]_[room-slug]_[attempt].png.
+9. Finalized image files are written under required folder path:
    - C:\gonf\\[gonf_name]\img\
-7. Missing folders are auto-created before image write.
-8. Gonf JSON save includes room image metadata and finalized file association.
-9. Load Gonf returns room image metadata so frontend can display associated image.
-10. Backward compatibility:
+10. Missing folders are auto-created before image write.
+11. Gonf JSON save includes room image metadata and finalized file association.
+12. Load Gonf returns room image metadata so frontend can display associated image.
+13. Backward compatibility:
    - Legacy files without room image fields continue to load successfully.
 
 ## User Story
@@ -37,6 +40,25 @@ So room visuals are stable across save/load cycles.
 8. Load returns image associations accurately for each room.
 9. Errors return machine-readable code plus user guidance.
 10. Automated tests cover parity regression + room image positive/negative flows.
+11. API contracts are explicitly defined and versioned for:
+   - Generate candidate image
+   - Retry candidate image
+   - Confirm/finalize candidate image
+   - Save Gonf auto-finalize response details
+12. Error taxonomy includes at minimum:
+   - IMAGE_GENERATION_FAILED
+   - IMAGE_GENERATION_TIMEOUT
+   - IMAGE_CANDIDATE_NOT_FOUND
+   - IMAGE_WRITE_FAILED
+   - IMAGE_FINALIZE_FAILED
+13. Room image metadata includes at minimum:
+   - imageStatus
+   - imageFileName
+   - imageRelativePath
+   - attemptIndex
+   - generationSeed
+   - generatedUtc
+   - finalizedUtc
 
 ## Edge Cases and Error Handling
 
@@ -95,7 +117,7 @@ So room visuals are stable across save/load cycles.
 
 ## Status
 
-- Current Status: Groomed
+- Current Status: Ready for Dev
 - Owner: Backend Developer
 - Last Updated: 2026-07-14
 - Branch Naming Target: feature/GONF-009B-backend-parity-migration-and-room-image-persistence
