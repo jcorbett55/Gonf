@@ -47,3 +47,20 @@ Each role file follows the same structure:
 - `qa.agent.md`: Validates behavior through test design and execution.
 
 Each role includes scope, deliverables, and gates so collaboration is predictable.
+
+## Reusable Agent Kit
+
+To support unrelated projects with the same team workflow, this repository now includes a project-agnostic template pack in `agents/templates`.
+
+How to use it in a new project:
+
+1. Copy all files from `agents/templates` into the new project's `agents` folder.
+2. Replace tokens in each file:
+	- `{{PROJECT_NAME}}`
+	- `{{BACKEND_PATH}}`
+	- `{{FRONTEND_PATH}}`
+3. Keep workflow and quality gates unless your team intentionally changes them.
+4. Update project-specific tooling and test commands in that project's main README.
+
+The existing Gonf role files remain unchanged for current work. The template pack is intended as the starting point for all future projects.
+
