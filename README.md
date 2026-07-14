@@ -1,6 +1,7 @@
 # Gonf
 
-Gonf is a full-stack web application that takes JSON input and generates a form-oriented schema preview.
+Gonf is a full-stack web application that takes JSON input and generates a form-oriented schema preview. 
+And as a side-hustle, it can generate a text-based adventure game. see:Text adventure games
 
 ## Tech Stack
 
