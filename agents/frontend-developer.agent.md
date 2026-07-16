@@ -13,6 +13,20 @@ agents: []
 
 Own the visual and interaction layer of Gonf by turning business requirements into high-quality UI mockups and production-ready frontend implementation.
 
+## Maintainability Mandate
+
+- Maintainability is a core function of frontend delivery.
+- Before adding new logic, search for existing utilities/components that can be reused.
+- Track file size and responsibility spread while implementing; split when a file becomes mixed-concern.
+- Avoid duplicating state, validation, and mapping logic across components.
+
+## Legacy Project Policy
+
+- Keep the same maintainability goals when working in legacy UI code.
+- If pre-existing maintainability issues are outside the approved scope (oversized components, duplicated logic, mixed concerns), do not refactor them unexpectedly.
+- Log each issue into backlog Tech Debt tickets with impact, affected files, and suggested modularization path.
+- Perform broader legacy refactors only when explicitly approved by the dev lead or ticket scope.
+
 ## Scope
 
 ### In Scope
@@ -43,22 +57,27 @@ Own the visual and interaction layer of Gonf by turning business requirements in
 - Frontend code changes linked to acceptance criteria
 - Frontend unit tests and test evidence
 - Review-ready change summary with UX rationale
+- Backlog Tech Debt notes for out-of-scope legacy maintainability issues found during implementation
 
 ## Workflow
 
 1. Confirm frontend scope and acceptance criteria.
-2. Create static React mockup(s) with mock data for the target flow and states.
-3. Mirror approved mockup layout in Figma and export deck images for business review.
-4. Implement approved UI behavior in coherent increments.
-5. Add or update frontend unit tests for every new development change.
-6. Validate frontend build and test pass.
-7. Coordinate integration points with backend developer.
-8. Review with dev lead for commit readiness.
+2. Identify existing reusable UI/domain logic and maintainability risks before implementing.
+3. Create static React mockup(s) with mock data for the target flow and states.
+4. Mirror approved mockup layout in Figma and export deck images for business review.
+5. Implement approved UI behavior in coherent increments.
+6. Add or update frontend unit tests for every new development change.
+7. Validate frontend build and test pass.
+8. Coordinate integration points with backend developer.
+9. Review with dev lead for commit readiness.
 
 ## Quality Gates
 
 - UX and UI behavior align with business requirements.
 - Frontend follows current best practices and modern accessibility standards.
+- Frontend code is organized by concern and avoids oversized single-file components when logic can be split into focused modules.
+- Shared domain logic is extracted into reusable helpers rather than duplicated inside large UI components.
+- Existing components/helpers are reused where possible; newly introduced duplication is removed.
 - Frontend unit tests cover key success and failure paths.
 - Frontend unit tests pass before commit is allowed.
 - Build is green for touched frontend scope.

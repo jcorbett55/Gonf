@@ -13,6 +13,20 @@ agents: []
 
 Ensure delivery quality by validating requirements, owning architecture direction, assigning implementation-ready work, and reviewing code with developers before commit.
 
+## Maintainability Mandate
+
+- Maintainability is a core review gate for all assigned work.
+- Explicitly challenge file-size growth and repeated logic during planning and review.
+- Require decomposition when a change expands mixed responsibilities in a single file.
+- Reject implementation that duplicates existing logic without strong justification.
+
+## Legacy Project Policy
+
+- Enforce maintainability goals in legacy code without forcing unplanned refactors.
+- When out-of-scope legacy maintainability issues are discovered, require them to be logged as backlog Tech Debt tickets instead of immediate refactoring.
+- Ensure each Tech Debt ticket includes impact, affected files, recommended approach, and priority guidance.
+- Approve out-of-scope legacy refactors only when risk, scope, and delivery impact are explicitly accepted.
+
 ## Scope
 
 ### In Scope
@@ -42,6 +56,7 @@ Ensure delivery quality by validating requirements, owning architecture directio
 - Architecture approach and boundaries
 - Developer work breakdown
 - Code review decision with actionable feedback
+- Tech Debt backlog directives for out-of-scope legacy maintainability issues
 
 ## Operating Principles
 
@@ -65,9 +80,10 @@ If dev lead is used without other role files:
 2. Identify technical risks and dependency impacts.
 3. Normalize cross-layer rules into clear implementation boundaries.
 4. Define architecture approach and implementation sequence.
-5. Produce clear developer assignments.
-6. Review completed code with developer.
-7. Decide commit readiness or return for revision.
+5. Include maintainability constraints in assignments (reuse opportunities, size boundaries, and module boundaries).
+6. Produce clear developer assignments.
+7. Review completed code with developer.
+8. Decide commit readiness or return for revision.
 
 ## Quality Gates
 
@@ -76,11 +92,14 @@ If dev lead is used without other role files:
 - Work items are implementable without hidden assumptions.
 - Cross-team dependencies are surfaced early.
 - Code review covers correctness, maintainability, and tests.
+- Code review explicitly checks for unnecessary duplication and avoidable monolith growth.
 
 ## Review Checklist
 
 - Requirement intent preserved
 - Contracts and boundaries respected
+- Domain concerns are decomposed into maintainable modules when feature scope crosses boundaries (for example room, item, and character workflows).
+- Oversized files are reduced when they materially increase review cost or regression risk.
 - Error handling and observability present
 - Automated tests added or updated
 - Acceptance criteria and failure modes both represented in implementation

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import App from './App'
 
 describe('App', () => {
@@ -301,6 +301,168 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save Room' }))
 
     expect(screen.queryByText(/cannot be created manually/i)).not.toBeInTheDocument()
-    expect(screen.getByText(/Saved room Secret Storage to Gonf LegacyGonf/i)).toBeInTheDocument()
+    expect(screen.getByText(/Saved room Secret Storage and generated a room image candidate/i)).toBeInTheDocument()
+  })
+
+  it('loads a gonf file with malformed entries without blanking the UI', async () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+
+    const mixedGonf = {
+      gonfName: 'MixedGonf',
+      rooms: [
+        null,
+        {
+          roomId: 1,
+          roomName: 'Study',
+          roomDescription: 'Loaded room',
+          roomFloor: 1,
+          northExit: '',
+          eastExit: '',
+          southExit: '',
+          westExit: '',
+          upExit: '',
+          downExit: '',
+        },
+      ],
+      items: [null],
+      characters: [null],
+    }
+
+    const loadFile = new File([JSON.stringify(mixedGonf)], 'mixed-gonf.json', {
+      type: 'application/json',
+    })
+
+    fireEvent.change(screen.getByLabelText('Load Existing Gonf'), {
+      target: { files: [loadFile] },
+    })
+
+    expect(await screen.findByText(/Loaded 1 room\(s\) from mixed-gonf.json\./i)).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Study')).toBeInTheDocument()
+  })
+
+  it('loads a gonf file with vertical exits without crashing the generator view', async () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+
+    const verticalExitGonf = {
+      gonfName: 'VerticalExitGonf',
+      rooms: [
+        {
+          roomId: 1,
+          roomName: 'Entryway',
+          roomDescription: 'Ground level.',
+          roomFloor: 1,
+          exits: {
+            north: null,
+            east: null,
+            south: null,
+            west: null,
+            up: 2,
+            down: null,
+          },
+        },
+        {
+          roomId: 2,
+          roomName: 'Upper Landing',
+          roomDescription: 'Second floor room.',
+          roomFloor: 2,
+          exits: {
+            north: null,
+            east: null,
+            south: null,
+            west: null,
+            up: null,
+            down: 1,
+          },
+        },
+      ],
+      items: [],
+      characters: [],
+    }
+
+    const loadFile = new File([JSON.stringify(verticalExitGonf)], 'vertical-exits-gonf.json', {
+      type: 'application/json',
+    })
+
+    fireEvent.change(screen.getByLabelText('Load Existing Gonf'), {
+      target: { files: [loadFile] },
+    })
+
+    expect(await screen.findByText(/Loaded 2 room\(s\) from vertical-exits-gonf.json\./i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Go up to Upper Landing' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Select Entryway' })).toBeInTheDocument()
+  })
+
+  it('generates room image candidate with retry and sends finalized image metadata on save gonf', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockImplementation(async (url) => {
+      const target = String(url)
+
+      if (target.includes('/api/room-image/generate')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            code: 200,
+            success: true,
+            errors: [],
+            data: {
+              previewDataUrl:
+                'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jfXcAAAAASUVORK5CYII=',
+              model: 'gpt-image-1',
+            },
+          }),
+        }
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          code: 200,
+          success: true,
+          errors: [],
+          data: {
+            path: 'C:\\gonf\\TestGonf\\TestGonf.json',
+            message: 'Saved Gonf to C:\\gonf\\TestGonf\\TestGonf.json.',
+          },
+        }),
+      }
+    })
+
+    try {
+      render(<App />)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+      fireEvent.change(screen.getByLabelText('Gonf Name'), { target: { value: 'TestGonf' } })
+      fireEvent.change(screen.getByLabelText('Room Name'), { target: { value: 'Study' } })
+      fireEvent.change(screen.getByLabelText('Room Description'), { target: { value: 'Elegant room with desk.' } })
+      fireEvent.change(screen.getByLabelText('Room Floor'), { target: { value: '1' } })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save Room' }))
+
+      expect(screen.getByText(/generated a room image candidate/i)).toBeInTheDocument()
+      expect(await screen.findByRole('img', { name: /generated room preview for study/i })).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Retry image for Study' }))
+      expect(screen.getByText(/new room image candidate for Study/i)).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save Gonf' }))
+
+      await waitFor(() => {
+        const hasSaveCall = fetchSpy.mock.calls.some(([url]) => String(url).includes('/api/gonf/save'))
+        expect(hasSaveCall).toBe(true)
+      })
+
+      const saveCall = fetchSpy.mock.calls.find(([url]) => String(url).includes('/api/gonf/save'))
+      const requestBody = JSON.parse(saveCall[1].body)
+      expect(requestBody.rooms).toHaveLength(1)
+      expect(['generating', 'candidate-ready', 'finalized']).toContain(requestBody.rooms[0].image.imageStatus)
+      expect(typeof requestBody.rooms[0].image.previewDataUrl).toBe('string')
+    } finally {
+      fetchSpy.mockRestore()
+    }
   })
 })

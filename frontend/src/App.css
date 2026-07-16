@@ -580,6 +580,92 @@ th {
   margin: 0 0 0.6rem;
 }
 
+.gg-room-image-preview {
+  margin: 0 0 0.65rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.gg-room-image-frame {
+  position: relative;
+}
+
+.gg-room-image-frame.is-generating::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background: linear-gradient(120deg, rgba(14, 34, 56, 0.18), rgba(12, 25, 38, 0.06));
+  pointer-events: none;
+}
+
+.gg-room-image-preview img {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid #cddaf0;
+  max-height: 180px;
+  object-fit: cover;
+}
+
+.gg-room-image-empty {
+  border-radius: 10px;
+  border: 1px dashed #b7c8e5;
+  background: #f5f8ff;
+  color: #4e6786;
+  min-height: 90px;
+  display: grid;
+  place-items: center;
+  font-size: 0.9rem;
+}
+
+.gg-room-image-badge {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  border: 1px solid #8fb2d6;
+  border-radius: 999px;
+  background: rgba(247, 251, 255, 0.96);
+  color: #1c4268;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0.2rem 0.55rem;
+  box-shadow: 0 8px 20px -14px rgba(15, 30, 45, 0.85);
+  z-index: 1;
+}
+
+.gg-room-image-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.gg-room-image-actions button {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid #bfd2ec;
+  border-radius: 999px;
+  background: #f7fbff;
+  color: #25527c;
+  padding: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gg-room-image-actions button:hover {
+  background: #ecf4ff;
+}
+
+.gg-room-image-status {
+  margin: 0;
+  color: #3d5e84;
+  font-size: 0.85rem;
+}
+
 .gg-room-popover ul {
   margin: 0;
   padding-left: 1.1rem;

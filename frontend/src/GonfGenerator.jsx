@@ -1,973 +1,32 @@
 import { useMemo, useState } from 'react'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5131'
-const floors = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5]
-const DOTNET_DECIMAL_MAX = 7.922816251426433e28
-const planarDirections = ['north', 'east', 'south', 'west']
-const allDirections = ['north', 'east', 'south', 'west', 'up', 'down']
-const SYSTEM_MANAGED_ROOMS = [
-  {
-    key: 'secret-storage',
-    name: 'Secret Storage',
-    description: 'Storage room for items that have no home.',
-    floor: -5,
-  },
-]
-const oppositeDirection = {
-  north: 'south',
-  east: 'west',
-  south: 'north',
-  west: 'east',
-  up: 'down',
-  down: 'up',
-}
-
-function createEmptyForm() {
-  return {
-    roomId: null,
-    roomName: '',
-    roomDescription: '',
-    roomFloor: '',
-    northExit: '',
-    eastExit: '',
-    southExit: '',
-    westExit: '',
-    upExit: '',
-    downExit: '',
-  }
-}
-
-function createEmptyItemForm() {
-  return {
-    itemId: null,
-    itemName: '',
-    itemWeight: '',
-    itemDescription: '',
-    itemValue: '',
-    canHoldItems: false,
-    canBeCarried: false,
-    itemLocation: '',
-    itemContents: [],
-  }
-}
-
-function createEmptyCharacterForm() {
-  return {
-    characterId: null,
-    characterName: '',
-    characterDescription: '',
-    characterLocation: '',
-    characterWanderer: false,
-    characterContains: [],
-  }
-}
-
-function toNullableNumber(value) {
-  if (value === '' || value === null || value === undefined) {
-    return null
-  }
-
-  const parsed = Number(value)
-  return Number.isNaN(parsed) ? null : parsed
-}
-
-function getTargetFloor(selectedFloor, direction) {
-  if (selectedFloor === null || direction === '') {
-    return null
-  }
-
-  if (direction === 'up') {
-    const next = selectedFloor + 1
-    const target = next === 0 ? selectedFloor + 2 : next
-    return floors.includes(target) ? target : null
-  }
-
-  const next = selectedFloor - 1
-  const target = next === 0 ? selectedFloor - 2 : next
-  return floors.includes(target) ? target : null
-}
-
-function roomNameById(roomsById, roomId) {
-  if (!roomId) {
-    return 'None'
-  }
-
-  return roomsById.get(roomId)?.roomName ?? `Room ${roomId}`
-}
-
-function buildFloorConnections(floorRooms) {
-  const lineKeys = new Set()
-  const lines = []
-  const floorRoomMap = new Map(floorRooms.map((room) => [room.roomId, room]))
-
-  for (const room of floorRooms) {
-    for (const direction of planarDirections) {
-      const targetId = room.exits[direction]
-      if (!targetId) {
-        continue
-      }
-
-      const targetRoom = floorRoomMap.get(targetId)
-      if (!targetRoom) {
-        continue
-      }
-
-      const low = Math.min(room.roomId, targetRoom.roomId)
-      const high = Math.max(room.roomId, targetRoom.roomId)
-      const key = `${low}-${high}`
-
-      if (lineKeys.has(key)) {
-        continue
-      }
-
-      lineKeys.add(key)
-      lines.push({ from: room, to: targetRoom })
-    }
-  }
-
-  return lines
-}
-
-function getRoomCenter(room, gridColumns, gridRows) {
-  return {
-    x: ((room.x + 0.5) / gridColumns) * 100,
-    y: ((room.y + 0.5) / gridRows) * 100,
-  }
-}
-
-function findNearestOpenSlot(occupied, startX, startY) {
-  const startKey = `${startX},${startY}`
-  if (!occupied.has(startKey)) {
-    return { x: startX, y: startY }
-  }
-
-  for (let radius = 1; radius <= 20; radius += 1) {
-    for (let dx = -radius; dx <= radius; dx += 1) {
-      for (let dy = -radius; dy <= radius; dy += 1) {
-        const x = startX + dx
-        const y = startY + dy
-        const key = `${x},${y}`
-        if (!occupied.has(key)) {
-          return { x, y }
-        }
-      }
-    }
-  }
-
-  return { x: startX, y: startY }
-}
-
-function queueDirectionalNeighbors(room, roomById, placed, queue, slot, directionOffset) {
-  for (const direction of planarDirections) {
-    const targetId = room.exits[direction]
-    if (!targetId || placed.has(targetId) || !roomById.has(targetId)) {
-      continue
-    }
-
-    const delta = directionOffset[direction]
-    queue.push({ roomId: targetId, x: slot.x + delta.x, y: slot.y + delta.y })
-  }
-}
-
-function placeDirectionalComponent(seedRoomId, startX, roomById, occupied, placed, directionOffset) {
-  const queue = [{ roomId: seedRoomId, x: startX, y: 0 }]
-
-  while (queue.length > 0) {
-    const next = queue.shift()
-    if (!next || placed.has(next.roomId)) {
-      continue
-    }
-
-    const room = roomById.get(next.roomId)
-    if (!room) {
-      continue
-    }
-
-    const slot = findNearestOpenSlot(occupied, next.x, next.y)
-    occupied.add(`${slot.x},${slot.y}`)
-    placed.set(room.roomId, slot)
-
-    queueDirectionalNeighbors(room, roomById, placed, queue, slot, directionOffset)
-  }
-
-  return startX + 6
-}
-
-function buildDirectionalFloorLayout(floorRooms) {
-  if (floorRooms.length === 0) {
-    return []
-  }
-
-  const directionOffset = {
-    north: { x: 0, y: -1 },
-    east: { x: 1, y: 0 },
-    south: { x: 0, y: 1 },
-    west: { x: -1, y: 0 },
-  }
-
-  const roomById = new Map(floorRooms.map((room) => [room.roomId, room]))
-  const sortedRooms = [...floorRooms].sort((a, b) => a.roomId - b.roomId)
-  const placed = new Map()
-  const occupied = new Set()
-  let componentStartX = 0
-
-  for (const seed of sortedRooms) {
-    if (placed.has(seed.roomId)) {
-      continue
-    }
-
-    componentStartX = placeDirectionalComponent(
-      seed.roomId,
-      componentStartX,
-      roomById,
-      occupied,
-      placed,
-      directionOffset,
-    )
-  }
-
-  const placedValues = Array.from(placed.values())
-  const minX = Math.min(...placedValues.map((point) => point.x))
-  const minY = Math.min(...placedValues.map((point) => point.y))
-
-  return sortedRooms.map((room, index) => {
-    const fallback = { x: index % 5, y: Math.floor(index / 5) }
-    const position = placed.get(room.roomId) ?? fallback
-    return {
-      ...room,
-      x: position.x - minX,
-      y: position.y - minY,
-    }
-  })
-}
-
-function applyReciprocalLinks(rooms, savedRoom) {
-  const nextRooms = rooms.map((room) => ({ ...room, exits: { ...room.exits } }))
-  const savedRoomCopy = { ...savedRoom, exits: { ...savedRoom.exits } }
-  const existingIndex = nextRooms.findIndex((room) => room.roomId === savedRoomCopy.roomId)
-
-  if (existingIndex >= 0) {
-    nextRooms[existingIndex] = savedRoomCopy
-  } else {
-    nextRooms.push(savedRoomCopy)
-  }
-
-  // Remove stale links pointing to this room before reapplying the current save state.
-  for (const room of nextRooms) {
-    if (room.roomId === savedRoomCopy.roomId) {
-      continue
-    }
-
-    for (const direction of allDirections) {
-      if (room.exits[direction] === savedRoomCopy.roomId) {
-        room.exits[direction] = null
-      }
-    }
-  }
-
-  // Tie both sides of each selected exit direction during save.
-  for (const direction of allDirections) {
-    const targetId = savedRoomCopy.exits[direction]
-    if (!targetId) {
-      continue
-    }
-
-    const targetRoom = nextRooms.find((room) => room.roomId === targetId)
-    if (!targetRoom) {
-      continue
-    }
-
-    const reverseDirection = oppositeDirection[direction]
-    targetRoom.exits[reverseDirection] = savedRoomCopy.roomId
-  }
-
-  return nextRooms
-}
-
-function normalizeRoomName(value) {
-  return String(value ?? '').trim().toLowerCase()
-}
-
-function getSystemManagedRoomDefinitionByName(roomName) {
-  return SYSTEM_MANAGED_ROOMS.find((room) => normalizeRoomName(room.name) === normalizeRoomName(roomName)) ?? null
-}
-
-function getSystemManagedRoomDefinitionByKey(roomKey) {
-  return SYSTEM_MANAGED_ROOMS.find((room) => room.key === roomKey) ?? null
-}
-
-function mapRawRoomExits(rawRoom) {
-  return {
-    north: toNullableNumber(rawRoom.exits?.north ?? rawRoom.northExit),
-    east: toNullableNumber(rawRoom.exits?.east ?? rawRoom.eastExit),
-    south: toNullableNumber(rawRoom.exits?.south ?? rawRoom.southExit),
-    west: toNullableNumber(rawRoom.exits?.west ?? rawRoom.westExit),
-    up: toNullableNumber(rawRoom.exits?.up ?? rawRoom.upExit),
-    down: toNullableNumber(rawRoom.exits?.down ?? rawRoom.downExit),
-  }
-}
-
-function hasNoExits(exits) {
-  if (!exits) {
-    return true
-  }
-
-  return allDirections.every((direction) => exits[direction] === null)
-}
-
-function getLegacySystemManagedRoomDefinition(room) {
-  const matchedDefinition = getSystemManagedRoomDefinitionByName(room?.roomName)
-  if (!matchedDefinition) {
-    return null
-  }
-
-  return Number(room?.roomFloor) === matchedDefinition.floor ? matchedDefinition : null
-}
-
-function getSystemManagedRoomDefinition(room) {
-  if (room?.systemManagedRoomKey) {
-    return getSystemManagedRoomDefinitionByKey(room.systemManagedRoomKey)
-  }
-
-  if (room?.isSecretStorage) {
-    return getSystemManagedRoomDefinitionByKey('secret-storage')
-  }
-
-  return null
-}
-
-function isSystemManagedRoom(room) {
-  return Boolean(getSystemManagedRoomDefinition(room))
-}
-
-function normalizeSystemManagedRoom(room, definition) {
-  return {
-    ...room,
-    systemManagedRoomKey: definition.key,
-    isSecretStorage: definition.key === 'secret-storage',
-    roomName: definition.name,
-    roomDescription: definition.description,
-    roomFloor: definition.floor,
-    exits: {
-      north: null,
-      east: null,
-      south: null,
-      west: null,
-      up: null,
-      down: null,
-    },
-  }
-}
-
-function createSecretStorageRoom(roomId) {
-  const secretStorageDefinition = getSystemManagedRoomDefinitionByKey('secret-storage')
-
-  return normalizeSystemManagedRoom({
-    roomId,
-    roomName: secretStorageDefinition.name,
-    roomDescription: secretStorageDefinition.description,
-    roomFloor: secretStorageDefinition.floor,
-    systemManagedRoomKey: secretStorageDefinition.key,
-    isSecretStorage: true,
-    exits: {
-      north: null,
-      east: null,
-      south: null,
-      west: null,
-      up: null,
-      down: null,
-    },
-  }, secretStorageDefinition)
-}
-
-function ensureSecretStorageRoom(rooms) {
-  const existing = rooms.find((room) => getSystemManagedRoomDefinition(room)?.key === 'secret-storage')
-  if (existing) {
-    const normalizedExisting = normalizeSystemManagedRoom(
-      existing,
-      getSystemManagedRoomDefinitionByKey('secret-storage'),
-    )
-
-    const nextRooms = rooms.map((room) =>
-      room.roomId === existing.roomId ? normalizedExisting : room,
-    )
-    return {
-      rooms: stripSecretStorageExits(nextRooms),
-      roomId: existing.roomId,
-      created: false,
-    }
-  }
-
-  const nextRoomId = Math.max(0, ...rooms.map((room) => room.roomId)) + 1
-  const nextRooms = [...rooms, createSecretStorageRoom(nextRoomId)]
-  return {
-    rooms: stripSecretStorageExits(nextRooms),
-    roomId: nextRoomId,
-    created: true,
-  }
-}
-
-function stripSecretStorageExits(rooms) {
-  const secretStorageRoom = rooms.find((room) => getSystemManagedRoomDefinition(room)?.key === 'secret-storage')
-  if (!secretStorageRoom) {
-    return rooms
-  }
-
-  const secretRoomId = secretStorageRoom.roomId
-
-  return rooms.map((room) => {
-    if (room.roomId === secretRoomId) {
-      return normalizeSystemManagedRoom(room, getSystemManagedRoomDefinitionByKey('secret-storage'))
-    }
-
-    const nextExits = { ...room.exits }
-    for (const direction of allDirections) {
-      if (nextExits[direction] === secretRoomId) {
-        nextExits[direction] = null
-      }
-    }
-
-    return {
-      ...room,
-      exits: nextExits,
-    }
-  })
-}
-
-function mapRoomForState(rawRoom) {
-  const exits = mapRawRoomExits(rawRoom)
-  const explicitSystemManagedDefinition = getSystemManagedRoomDefinition(rawRoom)
-  const legacySystemManagedDefinition = getLegacySystemManagedRoomDefinition(rawRoom)
-  const mappedRoom = {
-    roomId: Number(rawRoom.roomId),
-    roomName: String(rawRoom.roomName ?? ''),
-    roomDescription: String(rawRoom.roomDescription ?? ''),
-    roomFloor: Number(rawRoom.roomFloor),
-    systemManagedRoomKey:
-      explicitSystemManagedDefinition?.key ??
-      (legacySystemManagedDefinition && hasNoExits(exits) ? legacySystemManagedDefinition.key : null),
-    isSecretStorage:
-      explicitSystemManagedDefinition?.key === 'secret-storage' ||
-      (legacySystemManagedDefinition?.key === 'secret-storage' && hasNoExits(exits)),
-    exits,
-  }
-
-  const mappedDefinition = getSystemManagedRoomDefinition(mappedRoom)
-  return mappedDefinition ? normalizeSystemManagedRoom(mappedRoom, mappedDefinition) : mappedRoom
-}
-
-function canEditRoom(room) {
-  return room && !isSystemManagedRoom(room)
-}
-
-function roomToFormState(room) {
-  return {
-    roomId: room.roomId,
-    roomName: room.roomName,
-    roomDescription: room.roomDescription,
-    roomFloor: String(room.roomFloor),
-    northExit: room.exits.north ? String(room.exits.north) : '',
-    eastExit: room.exits.east ? String(room.exits.east) : '',
-    southExit: room.exits.south ? String(room.exits.south) : '',
-    westExit: room.exits.west ? String(room.exits.west) : '',
-    upExit: room.exits.up ? String(room.exits.up) : '',
-    downExit: room.exits.down ? String(room.exits.down) : '',
-  }
-}
-
-function normalizeOptionalNumericForState(rawValue) {
-  if (rawValue === null || rawValue === undefined || rawValue === '') {
-    return ''
-  }
-
-  const numericValue = Number(rawValue)
-  return Number.isFinite(numericValue) ? numericValue : ''
-}
-
-function mapItemForState(rawItem, index) {
-  const itemLocation = rawItem.location ?? rawItem.itemLocation ?? rawItem.roomId ?? ''
-  const contentsSource = Array.isArray(rawItem.contents) ? rawItem.contents : []
-
-  const itemContents = contentsSource
-    .map((content) => {
-      if (content === null || content === undefined) {
-        return null
-      }
-
-      if (typeof content === 'object') {
-        const nestedId = content.itemId ?? content.id
-        return nestedId === null || nestedId === undefined ? null : String(nestedId)
-      }
-
-      return String(content)
-    })
-    .filter(Boolean)
-
-  return {
-    itemId: Number(rawItem.itemId ?? rawItem.id ?? index + 1),
-    itemName: String(rawItem.itemName ?? rawItem.name ?? ''),
-    itemWeight: normalizeOptionalNumericForState(rawItem.itemWeight ?? rawItem.weight),
-    itemDescription: String(rawItem.itemDescription ?? rawItem.description ?? ''),
-    itemValue: normalizeOptionalNumericForState(rawItem.itemValue ?? rawItem.value),
-    canHoldItems: Boolean(rawItem.canHoldItems ?? rawItem.canHold ?? false),
-    canBeCarried: Boolean(rawItem.canBeCarried ?? rawItem.canCarry ?? false),
-    itemLocation: itemLocation === null || itemLocation === undefined ? '' : String(itemLocation),
-    itemContents,
-  }
-}
-
-function mapCharacterForState(rawCharacter, index) {
-  const characterLocation = rawCharacter.location ?? rawCharacter.characterLocation ?? rawCharacter.roomId ?? ''
-  const characterContainsSource = Array.isArray(rawCharacter.contains) ? rawCharacter.contains : []
-
-  const characterContains = characterContainsSource
-    .map((containedItem) => {
-      if (containedItem === null || containedItem === undefined) {
-        return null
-      }
-
-      if (typeof containedItem === 'object') {
-        const nestedId = containedItem.itemId ?? containedItem.id
-        return nestedId === null || nestedId === undefined ? null : String(nestedId)
-      }
-
-      return String(containedItem)
-    })
-    .filter(Boolean)
-
-  return {
-    characterId: Number(rawCharacter.characterId ?? rawCharacter.id ?? index + 1),
-    characterName: String(rawCharacter.characterName ?? rawCharacter.name ?? ''),
-    characterDescription: String(rawCharacter.description ?? rawCharacter.characterDescription ?? ''),
-    characterLocation: characterLocation === null || characterLocation === undefined ? '' : String(characterLocation),
-    characterWanderer: Boolean(rawCharacter.wanderer ?? false),
-    characterContains,
-  }
-}
-
-function getValidatedItemLocation(itemForm, roomsById) {
-  const itemLocation = itemForm.itemLocation === '' ? null : toNullableNumber(itemForm.itemLocation)
-  if (itemForm.itemLocation !== '' && (itemLocation === null || !roomsById.has(itemLocation))) {
-    return { error: 'Selected item room was not found.' }
-  }
-
-  return { itemLocation }
-}
-
-function getValidatedNumericValue(rawValue, label) {
-  const normalizedValue = rawValue === '' ? null : Number(rawValue)
-  if (normalizedValue !== null && Number.isNaN(normalizedValue)) {
-    return { error: `${label} must be a number.` }
-  }
-
-  if (normalizedValue !== null && !Number.isFinite(normalizedValue)) {
-    return { error: `${label} must be a finite number.` }
-  }
-
-  if (normalizedValue !== null && Math.abs(normalizedValue) > DOTNET_DECIMAL_MAX) {
-    return { error: `${label} is out of supported range.` }
-  }
-
-  return { value: normalizedValue }
-}
-
-function getNormalizedContents(itemForm) {
-  return Array.isArray(itemForm.itemContents)
-    ? Array.from(new Set(itemForm.itemContents.filter(Boolean)))
-    : []
-}
-
-function validateContentsSelection(itemForm, selectedContents, currentItems) {
-  if (!itemForm.canHoldItems) {
-    return null
-  }
-
-  const availableItemIds = new Set(currentItems.map((item) => String(item.itemId)))
-  const hasInvalidContents = selectedContents.some((itemId) => !availableItemIds.has(itemId))
-  return hasInvalidContents ? 'One or more selected contents items are invalid.' : null
-}
-
-function itemNameById(itemsById, itemId) {
-  if (!itemId) {
-    return 'Unknown Item'
-  }
-
-  return itemsById.get(String(itemId))?.itemName ?? `Item ${itemId}`
-}
-
-function renderSelectedRoomPanel({
-  selectedRoomPanelMode,
-  selectedRoom,
-  selectedRoomItems,
-  selectedRoomCharacters,
-  roomsById,
-  itemsById,
-  onSelectItemForEdit,
-  onSelectContainedItem,
-  onSelectCharacterForEdit,
-}) {
-  if (selectedRoomPanelMode === 'items') {
-    return (
-      <>
-        <h3>{selectedRoom.roomName} Items</h3>
-        {selectedRoomItems.length === 0 ? (
-          <p className="muted">No items are currently assigned to this room.</p>
-        ) : (
-          <ul className="gg-item-list">
-            {selectedRoomItems.map((item) => (
-              <li key={item.itemId}>
-                <button
-                  type="button"
-                  className="gg-item-select-button"
-                  onClick={() => onSelectItemForEdit(item)}
-                  aria-label={`Edit ${item.itemName}`}
-                >
-                  <strong>{item.itemName}</strong>
-                  <span>{item.itemDescription || 'No description.'}</span>
-                </button>
-                {Array.isArray(item.itemContents) && item.itemContents.length > 0 && (
-                  <div className="gg-item-contents-block">
-                    <p className="gg-item-contents-title">Contents</p>
-                    <ul className="gg-item-contents-list">
-                      {item.itemContents.map((contentItemId) => (
-                        <li key={`${item.itemId}-${contentItemId}`}>
-                          <button
-                            type="button"
-                            className="gg-item-contents-button"
-                            onClick={() => onSelectContainedItem(String(contentItemId))}
-                            aria-label={`Edit contained item ${itemNameById(itemsById, contentItemId)}`}
-                          >
-                            {itemNameById(itemsById, contentItemId)}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </>
-    )
-  }
-
-  if (selectedRoomPanelMode === 'characters') {
-    return (
-      <>
-        <h3>{selectedRoom.roomName} Characters</h3>
-        {selectedRoomCharacters.length === 0 ? (
-          <p className="muted">No characters are currently assigned to this room.</p>
-        ) : (
-          <ul className="gg-item-list">
-            {selectedRoomCharacters.map((character) => (
-              <li key={character.characterId}>
-                <button
-                  type="button"
-                  className="gg-item-select-button"
-                  onClick={() => onSelectCharacterForEdit(character)}
-                  aria-label={`Edit ${character.characterName}`}
-                >
-                  <strong>{character.characterName}</strong>
-                  <span>{character.characterDescription || 'No description.'}</span>
-                </button>
-                {Array.isArray(character.characterContains) && character.characterContains.length > 0 && (
-                  <div className="gg-item-contents-block">
-                    <p className="gg-item-contents-title">Carries</p>
-                    <ul className="gg-item-contents-list">
-                      {character.characterContains.map((contentItemId) => (
-                        <li key={`${character.characterId}-${contentItemId}`}>
-                          <span className="gg-item-contents-static-text">{itemNameById(itemsById, contentItemId)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </>
-    )
-  }
-
-  return (
-    <>
-      <h3>{selectedRoom.roomName}</h3>
-      <p>{selectedRoom.roomDescription || 'No description.'}</p>
-      <ul>
-        <li>North: {roomNameById(roomsById, selectedRoom.exits.north)}</li>
-        <li>East: {roomNameById(roomsById, selectedRoom.exits.east)}</li>
-        <li>South: {roomNameById(roomsById, selectedRoom.exits.south)}</li>
-        <li>West: {roomNameById(roomsById, selectedRoom.exits.west)}</li>
-        <li>Up: {roomNameById(roomsById, selectedRoom.exits.up)}</li>
-        <li>Down: {roomNameById(roomsById, selectedRoom.exits.down)}</li>
-      </ul>
-    </>
-  )
-}
-
-function getNormalizedCharacterContains(characterForm) {
-  return Array.isArray(characterForm.characterContains)
-    ? Array.from(new Set(characterForm.characterContains.filter(Boolean)))
-    : []
-}
-
-function validateCharacterContainsSelection(selectedContains, currentItems) {
-  const availableItemIds = new Set(currentItems.map((item) => String(item.itemId)))
-  const hasInvalidContents = selectedContains.some((itemId) => !availableItemIds.has(itemId))
-  return hasInvalidContents ? 'One or more selected carried items are invalid.' : null
-}
-
-function buildCharacterSaveResult({
-  gonfName,
-  characterForm,
-  rooms,
-  currentItems,
-  currentCharacters,
-}) {
-  if (!gonfName.trim()) {
-    return { error: 'Gonf Name is required before saving characters.' }
-  }
-
-  if (!characterForm.characterName.trim()) {
-    return { error: 'Character Name is required.' }
-  }
-
-  let nextRooms = rooms
-  let characterLocationId = null
-
-  if (characterForm.characterLocation === '') {
-    const ensuredSecretStorage = ensureSecretStorageRoom(rooms)
-    nextRooms = ensuredSecretStorage.rooms
-    characterLocationId = ensuredSecretStorage.roomId
-  } else {
-    characterLocationId = toNullableNumber(characterForm.characterLocation)
-    if (characterLocationId === null) {
-      return { error: 'Selected character room was not found.' }
-    }
-
-    const selectedRoom = nextRooms.find((room) => room.roomId === characterLocationId)
-    if (!selectedRoom) {
-      return { error: 'Selected character room was not found.' }
-    }
-
-    if (isSystemManagedRoom(selectedRoom)) {
-      return { error: `${selectedRoom.roomName} is system-managed and cannot be assigned manually.` }
-    }
-  }
-
-  const selectedContains = getNormalizedCharacterContains(characterForm)
-  const containsError = validateCharacterContainsSelection(selectedContains, currentItems)
-  if (containsError) {
-    return { error: containsError }
-  }
-
-  const selectedContainsSet = new Set(selectedContains.map(String))
-  const nextItems = currentItems.map((item) => {
-    const nextContents = Array.isArray(item.itemContents)
-      ? item.itemContents.filter((containedId) => !selectedContainsSet.has(String(containedId)))
-      : []
-
-    if (!selectedContainsSet.has(String(item.itemId))) {
-      return {
-        ...item,
-        itemContents: nextContents,
-      }
-    }
-
-    return {
-      ...item,
-      itemLocation: '',
-      itemContents: nextContents,
-    }
-  })
-
-  const editingCharacterId = toNullableNumber(characterForm.characterId)
-  const nextCharacterId = editingCharacterId ?? (Math.max(0, ...currentCharacters.map((character) => character.characterId)) + 1)
-
-  const savedCharacter = {
-    characterId: nextCharacterId,
-    characterName: characterForm.characterName.trim(),
-    characterDescription: characterForm.characterDescription.trim(),
-    characterLocation: String(characterLocationId),
-    characterWanderer: Boolean(characterForm.characterWanderer),
-    characterContains: selectedContains,
-  }
-
-  const normalizedCharacters = currentCharacters.map((character) => ({
-    ...character,
-    characterContains: Array.isArray(character.characterContains) ? character.characterContains.map(String) : [],
-  }))
-
-  const nextCharactersWithoutConflicts = normalizedCharacters.map((character) => {
-    if (character.characterId === nextCharacterId) {
-      return character
-    }
-
-    return {
-      ...character,
-      characterContains: character.characterContains.filter((itemId) => !selectedContainsSet.has(String(itemId))),
-    }
-  })
-
-  const nextCharacters = nextCharactersWithoutConflicts.some((character) => character.characterId === nextCharacterId)
-    ? nextCharactersWithoutConflicts.map((character) => (character.characterId === nextCharacterId ? savedCharacter : character))
-    : [...nextCharactersWithoutConflicts, savedCharacter]
-
-  const nextRoomsById = new Map(nextRooms.map((room) => [room.roomId, room]))
-  const locationName = roomNameById(nextRoomsById, characterLocationId)
-
-  return {
-    nextRooms,
-    nextItems,
-    nextCharacters,
-    nextSelectedRoomId: characterLocationId,
-    nextSelectedFloor: nextRoomsById.get(characterLocationId)?.roomFloor ?? 1,
-    message: `Saved character ${savedCharacter.characterName} to ${locationName}.`,
-  }
-}
-
-function buildItemSaveResult({ gonfName, itemForm, roomsById, currentItems, currentCharacters, currentSelectedRoomId }) {
-  if (!gonfName.trim()) {
-    return { error: 'Gonf Name is required before saving items.' }
-  }
-
-  if (!itemForm.itemName.trim()) {
-    return { error: 'Item Name is required.' }
-  }
-
-  const defaultLocation = itemForm.defaultItemLocation ?? ''
-  const effectiveLocationValue = itemForm.itemLocation === '' ? defaultLocation : itemForm.itemLocation
-
-  const locationResult = getValidatedItemLocation(
-    {
-      ...itemForm,
-      itemLocation: effectiveLocationValue,
-    },
-    roomsById,
-  )
-  if (locationResult.error) {
-    return { error: locationResult.error }
-  }
-  const itemLocation = locationResult.itemLocation
-
-  const weightResult = getValidatedNumericValue(itemForm.itemWeight, 'Item Weight')
-  if (weightResult.error) {
-    return { error: weightResult.error }
-  }
-  const itemWeight = weightResult.value
-
-  const valueResult = getValidatedNumericValue(itemForm.itemValue, 'Item Value')
-  if (valueResult.error) {
-    return { error: valueResult.error }
-  }
-  const itemValue = valueResult.value
-
-  const selectedContents = getNormalizedContents(itemForm)
-  const selectedContentsSet = new Set(selectedContents.map(String))
-
-  const contentsError = validateContentsSelection(itemForm, selectedContents, currentItems)
-  if (contentsError) {
-    return { error: contentsError }
-  }
-
-  const editingItemId = toNullableNumber(itemForm.itemId)
-  const nextItemId = editingItemId ?? (Math.max(0, ...currentItems.map((item) => item.itemId)) + 1)
-  const savedItem = {
-    itemId: nextItemId,
-    itemName: itemForm.itemName.trim(),
-    itemWeight,
-    itemDescription: itemForm.itemDescription.trim(),
-    itemValue,
-    canHoldItems: Boolean(itemForm.canHoldItems),
-    canBeCarried: Boolean(itemForm.canBeCarried),
-    itemLocation: itemLocation === null ? '' : String(itemLocation),
-    itemContents: itemForm.canHoldItems ? selectedContents : [],
-  }
-
-  const normalizedItems = currentItems.map((item) => {
-    if (item.itemId === nextItemId) {
-      return item
-    }
-
-    const nextContents = Array.isArray(item.itemContents)
-      ? item.itemContents.filter((containedId) => !selectedContentsSet.has(String(containedId)))
-      : []
-
-    if (selectedContentsSet.has(String(item.itemId))) {
-      return {
-        ...item,
-        itemLocation: '',
-        itemContents: nextContents,
-      }
-    }
-
-    return {
-      ...item,
-      itemContents: nextContents,
-    }
-  })
-
-  const nextItems = normalizedItems.some((item) => item.itemId === nextItemId)
-    ? normalizedItems.map((item) => (item.itemId === nextItemId ? savedItem : item))
-    : [...normalizedItems, savedItem]
-
-  const nextCharacters = currentCharacters.map((character) => {
-    if (!Array.isArray(character.characterContains)) {
-      return character
-    }
-
-    return {
-      ...character,
-      characterContains: character.characterContains.filter((itemId) => !selectedContentsSet.has(String(itemId))),
-    }
-  })
-
-  return {
-    nextItems,
-    nextCharacters,
-    nextSelectedRoomId: itemLocation ?? currentSelectedRoomId,
-    message: `Saved item ${savedItem.itemName} to ${itemLocation ? roomNameById(roomsById, itemLocation) : 'the Gonf without a room assignment'}.`,
-  }
-}
-
-function parseLoadedGonf(payload) {
-  if (!payload || typeof payload !== 'object' || !Array.isArray(payload.rooms)) {
-    throw new Error('File is missing a valid rooms array.')
-  }
-
-  const rawRooms = payload.rooms
-    .map((rawRoom) => {
-      const roomFloor = Number(rawRoom.roomFloor)
-      if (!Number.isFinite(roomFloor) || !floors.includes(roomFloor)) {
-        return null
-      }
-
-
-
-      return mapRoomForState(rawRoom)
-    })
-    .filter(Boolean)
-
-  const rooms = stripSecretStorageExits(rawRooms)
-
-  const items = Array.isArray(payload.items)
-    ? payload.items.map((rawItem, index) => mapItemForState(rawItem, index)).filter(Boolean)
-    : []
-
-  const characters = Array.isArray(payload.characters)
-    ? payload.characters.map((rawCharacter, index) => mapCharacterForState(rawCharacter, index)).filter(Boolean)
-    : []
-
-  return {
-    gonfName: String(payload.gonfName ?? ''),
-    rooms,
-    items,
-    characters,
-  }
-}
-
+import { API_BASE_URL, floors, toNullableNumber } from './gonf/shared'
+import {
+  applyReciprocalLinks,
+  buildDirectionalFloorLayout,
+  buildFloorConnections,
+  canEditRoom,
+  createEmptyForm,
+  createRoomImageCandidate,
+  ensureSecretStorageRoom,
+  finalizeRoomImageState,
+  generateRoomPreviewPngDataUrl,
+  getRoomCenter,
+  getSystemManagedRoomDefinition,
+  getSystemManagedRoomDefinitionByName,
+  getTargetFloor,
+  isProviderNotConfiguredError,
+  isProviderTimeoutError,
+  isSystemManagedRoom,
+  normalizeRoomName,
+  roomNameById,
+  renderSelectedRoomPanel,
+  requestProviderRoomImage,
+  roomToFormState,
+  stripSecretStorageExits,
+} from './gonf/rooms'
+import { createEmptyItemForm, buildItemSaveResult, getValidatedNumericValue } from './gonf/items'
+import { createEmptyCharacterForm, buildCharacterSaveResult } from './gonf/characters'
+import { parseLoadedGonf } from './gonf/loaders'
 export default function GonfGenerator() {
   const [gonfName, setGonfName] = useState('')
   const [rooms, setRooms] = useState([])
@@ -1283,6 +342,140 @@ export default function GonfGenerator() {
     setStatusMessage(`Moved to Floor ${targetRoom.roomFloor} via ${direction} exit.`)
   }
 
+  const onRetryRoomImage = (room) => {
+    if (!room) {
+      return
+    }
+
+    const nextAttemptIndex = Number(room.image?.attemptIndex ?? -1) + 1
+    const nextImage = createRoomImageCandidate(room, nextAttemptIndex)
+
+    setRooms((currentRooms) =>
+      currentRooms.map((existingRoom) =>
+        existingRoom.roomId === room.roomId
+          ? {
+              ...existingRoom,
+              image: nextImage,
+            }
+          : existingRoom,
+      ),
+    )
+
+    void (async () => {
+      const providerResult = await requestProviderRoomImage(gonfName, room, nextImage)
+      if (!providerResult.success) {
+        if (isProviderNotConfiguredError(providerResult)) {
+          const fallbackPreview = generateRoomPreviewPngDataUrl(
+            room.roomName,
+            room.roomDescription,
+            nextImage.generationSeed,
+            nextImage.attemptIndex,
+          )
+
+          setRooms((currentRooms) =>
+            currentRooms.map((existingRoom) =>
+              existingRoom.roomId === room.roomId && (existingRoom.image?.generationSeed ?? '') === nextImage.generationSeed
+                ? {
+                    ...existingRoom,
+                    image: {
+                      ...existingRoom.image,
+                      imageStatus: 'candidate-ready',
+                      previewDataUrl: fallbackPreview,
+                    },
+                  }
+                : existingRoom,
+            ),
+          )
+
+          setStatusMessage(
+            `Image provider key not configured. Generated a local preview for ${room.roomName} instead.`,
+          )
+          return
+        }
+
+        if (isProviderTimeoutError(providerResult)) {
+          setRooms((currentRooms) =>
+            currentRooms.map((existingRoom) =>
+              existingRoom.roomId === room.roomId && (existingRoom.image?.generationSeed ?? '') === nextImage.generationSeed
+                ? {
+                    ...existingRoom,
+                    image: {
+                      ...existingRoom.image,
+                      imageStatus: 'generating',
+                    },
+                  }
+                : existingRoom,
+            ),
+          )
+
+          setStatusMessage(
+            `Image generation is still running for ${room.roomName}. Check back shortly and retry if needed.`,
+          )
+          return
+        }
+
+        setRooms((currentRooms) =>
+          currentRooms.map((existingRoom) =>
+            existingRoom.roomId === room.roomId && (existingRoom.image?.generationSeed ?? '') === nextImage.generationSeed
+              ? {
+                  ...existingRoom,
+                  image: {
+                    ...existingRoom.image,
+                    imageStatus: 'error',
+                  },
+                }
+              : existingRoom,
+          ),
+        )
+
+        setStatusMessage(`Image generation failed for ${room.roomName}: ${providerResult.errorMessage}`)
+        return
+      }
+
+      setRooms((currentRooms) =>
+        currentRooms.map((existingRoom) => {
+          if (existingRoom.roomId !== room.roomId) {
+            return existingRoom
+          }
+
+          if ((existingRoom.image?.generationSeed ?? '') !== nextImage.generationSeed) {
+            return existingRoom
+          }
+
+          return {
+            ...existingRoom,
+            image: {
+              ...existingRoom.image,
+              imageStatus: 'candidate-ready',
+              previewDataUrl: providerResult.previewDataUrl,
+            },
+          }
+        }),
+      )
+    })()
+
+    setStatusMessage(`Generated a new room image candidate for ${room.roomName}.`)
+  }
+
+  const onConfirmRoomImage = (room) => {
+    if (!room) {
+      return
+    }
+
+    setRooms((currentRooms) =>
+      currentRooms.map((existingRoom) =>
+        existingRoom.roomId === room.roomId
+          ? {
+              ...existingRoom,
+              image: finalizeRoomImageState(existingRoom),
+            }
+          : existingRoom,
+      ),
+    )
+
+    setStatusMessage(`Finalized the room image for ${room.roomName}.`)
+  }
+
   const onSaveRoom = () => {
     if (!gonfName.trim()) {
       setStatusMessage('Gonf Name is required before saving rooms.')
@@ -1330,11 +523,21 @@ export default function GonfGenerator() {
 
     setRooms((currentRooms) => {
       const nextRoomId = editingRoomId ?? (Math.max(0, ...currentRooms.map((room) => room.roomId)) + 1)
+      const existingRoomForImage = currentRooms.find((room) => room.roomId === nextRoomId)
+      const previousAttemptIndex = Number(existingRoomForImage?.image?.attemptIndex ?? -1)
+      const nextAttemptIndex = previousAttemptIndex + 1
 
       const savedRoom = {
         roomId: nextRoomId,
         roomName: form.roomName.trim(),
         roomDescription: form.roomDescription.trim(),
+        image: createRoomImageCandidate(
+          {
+            roomName: form.roomName.trim(),
+            roomDescription: form.roomDescription.trim(),
+          },
+          nextAttemptIndex,
+        ),
         roomFloor,
         exits: {
           north: toNullableNumber(form.northExit),
@@ -1346,13 +549,106 @@ export default function GonfGenerator() {
         },
       }
 
+      void (async () => {
+        const providerResult = await requestProviderRoomImage(gonfName, savedRoom, savedRoom.image)
+        if (!providerResult.success) {
+          if (isProviderNotConfiguredError(providerResult)) {
+            const fallbackPreview = generateRoomPreviewPngDataUrl(
+              savedRoom.roomName,
+              savedRoom.roomDescription,
+              savedRoom.image.generationSeed,
+              savedRoom.image.attemptIndex,
+            )
+
+            setRooms((latestRooms) =>
+              latestRooms.map((latestRoom) =>
+                latestRoom.roomId === nextRoomId && (latestRoom.image?.generationSeed ?? '') === savedRoom.image.generationSeed
+                  ? {
+                      ...latestRoom,
+                      image: {
+                        ...latestRoom.image,
+                        imageStatus: 'candidate-ready',
+                        previewDataUrl: fallbackPreview,
+                      },
+                    }
+                  : latestRoom,
+              ),
+            )
+
+            setStatusMessage(
+              `Room saved. Image provider key is not configured, so a local preview was generated for ${savedRoom.roomName}.`,
+            )
+            return
+          }
+
+          if (isProviderTimeoutError(providerResult)) {
+            setRooms((latestRooms) =>
+              latestRooms.map((latestRoom) =>
+                latestRoom.roomId === nextRoomId && (latestRoom.image?.generationSeed ?? '') === savedRoom.image.generationSeed
+                  ? {
+                      ...latestRoom,
+                      image: {
+                        ...latestRoom.image,
+                        imageStatus: 'generating',
+                      },
+                    }
+                  : latestRoom,
+              ),
+            )
+
+            setStatusMessage(
+              `Room saved. Image generation for ${savedRoom.roomName} is still running and will complete shortly.`,
+            )
+            return
+          }
+
+          setRooms((latestRooms) =>
+            latestRooms.map((latestRoom) =>
+              latestRoom.roomId === nextRoomId && (latestRoom.image?.generationSeed ?? '') === savedRoom.image.generationSeed
+                ? {
+                    ...latestRoom,
+                    image: {
+                      ...latestRoom.image,
+                      imageStatus: 'error',
+                    },
+                  }
+                : latestRoom,
+            ),
+          )
+
+          setStatusMessage(`Room saved, but image generation failed: ${providerResult.errorMessage}`)
+          return
+        }
+
+        setRooms((latestRooms) =>
+          latestRooms.map((latestRoom) => {
+            if (latestRoom.roomId !== nextRoomId) {
+              return latestRoom
+            }
+
+            if ((latestRoom.image?.generationSeed ?? '') !== savedRoom.image.generationSeed) {
+              return latestRoom
+            }
+
+            return {
+              ...latestRoom,
+              image: {
+                ...latestRoom.image,
+                imageStatus: 'candidate-ready',
+                previewDataUrl: providerResult.previewDataUrl,
+              },
+            }
+          }),
+        )
+      })()
+
       const nextRooms = stripSecretStorageExits(applyReciprocalLinks(currentRooms, savedRoom))
 
       setSelectedRoomId(nextRoomId)
       setSelectedRoomPanelMode('room')
       setActiveFloor(roomFloor)
       setForm(createEmptyForm())
-      setStatusMessage(`Saved room ${savedRoom.roomName} to Gonf ${gonfName.trim()}.`)
+      setStatusMessage(`Saved room ${savedRoom.roomName} and generated a room image candidate.`)
 
       return nextRooms
     })
@@ -1434,6 +730,13 @@ export default function GonfGenerator() {
       return
     }
 
+    const finalizedRooms = rooms.map((room) => ({
+      ...room,
+      image: finalizeRoomImageState(room),
+    }))
+
+    setRooms(finalizedRooms)
+
     const draftCharacters = characterForm.characterName.trim()
       ? [
           {
@@ -1476,13 +779,23 @@ export default function GonfGenerator() {
 
     const savePayload = {
       gonfName: gonfName.trim(),
-      rooms: rooms.map((room) => ({
+      rooms: finalizedRooms.map((room) => ({
         roomId: room.roomId,
         roomName: room.roomName,
         roomDescription: room.roomDescription,
         roomFloor: room.roomFloor,
         systemManagedRoomKey: room.systemManagedRoomKey ?? null,
         isSecretStorage: Boolean(room.isSecretStorage),
+        image: {
+          imageStatus: room.image?.imageStatus ?? 'none',
+          attemptIndex: room.image?.attemptIndex ?? 0,
+          generationSeed: room.image?.generationSeed ?? '',
+          generatedUtc: room.image?.generatedUtc ?? null,
+          finalizedUtc: room.image?.finalizedUtc ?? null,
+          fileName: room.image?.fileName ?? '',
+          relativePath: room.image?.relativePath ?? '',
+          previewDataUrl: room.image?.previewDataUrl ?? '',
+        },
         exits: {
           north: room.exits.north,
           east: room.exits.east,
@@ -1534,7 +847,7 @@ export default function GonfGenerator() {
         return
       }
 
-      const message = payload?.data?.message ?? `Saved Gonf to C:\\Gonf\\${gonfName.trim()}.json.`
+      const message = payload?.data?.message ?? `Saved Gonf to C:\\gonf\\${gonfName.trim()}\\${gonfName.trim()}.json.`
       setStatusMessage(message)
     } catch {
       setStatusMessage('Could not save Gonf because the save service is unavailable.')
@@ -1557,7 +870,7 @@ export default function GonfGenerator() {
       setRooms(loaded.rooms)
       setItems(loaded.items)
       setCharacters(loaded.characters)
-      setForm(createEmptyForm())
+      setForm(loaded.rooms[0] ? roomToFormState(loaded.rooms[0]) : createEmptyForm())
       setItemForm(createEmptyItemForm())
       setCharacterForm(
         loaded.characters[0]
@@ -2119,6 +1432,8 @@ export default function GonfGenerator() {
                   selectedRoomCharacters,
                   roomsById,
                   itemsById,
+                  onRetryRoomImage,
+                  onConfirmRoomImage,
                   onSelectItemForEdit,
                   onSelectContainedItem,
                   onSelectCharacterForEdit,
@@ -2131,3 +1446,4 @@ export default function GonfGenerator() {
     </main>
   )
 }
+

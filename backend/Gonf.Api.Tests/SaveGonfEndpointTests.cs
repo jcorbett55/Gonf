@@ -20,11 +20,12 @@ public class SaveGonfEndpointTests : IClassFixture<WebApplicationFactory<Program
     {
         using var client = _factory.CreateClient();
         var gonfName = $"Uat_{Guid.NewGuid():N}";
-        var savePath = Path.Combine(@"C:\Gonf", $"{gonfName}.json");
+        var gonfDirectory = Path.Combine(@"C:\gonf\\", gonfName);
+        var savePath = Path.Combine(gonfDirectory, $"{gonfName}.json");
 
-        if (File.Exists(savePath))
+        if (Directory.Exists(gonfDirectory))
         {
-            File.Delete(savePath);
+            Directory.Delete(gonfDirectory, recursive: true);
         }
 
         var request = new
@@ -96,9 +97,82 @@ public class SaveGonfEndpointTests : IClassFixture<WebApplicationFactory<Program
         }
         finally
         {
-            if (File.Exists(savePath))
+            if (Directory.Exists(gonfDirectory))
             {
-                File.Delete(savePath);
+                Directory.Delete(gonfDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task PostSaveWithRoomImage_PersistsImageMetadataAndImageFile()
+    {
+        using var client = _factory.CreateClient();
+        var gonfName = $"Img_{Guid.NewGuid():N}";
+        var gonfDirectory = Path.Combine(@"C:\gonf\\", gonfName);
+        var savePath = Path.Combine(gonfDirectory, $"{gonfName}.json");
+
+        if (Directory.Exists(gonfDirectory))
+        {
+            Directory.Delete(gonfDirectory, recursive: true);
+        }
+
+        var request = new
+        {
+            gonfName,
+            rooms = new[]
+            {
+                new
+                {
+                    roomId = 7,
+                    roomName = "Kitchen",
+                    roomDescription = "A warm kitchen.",
+                    roomFloor = 1,
+                    image = new
+                    {
+                        imageStatus = "candidate-ready",
+                        attemptIndex = 2,
+                        generationSeed = "seed-123",
+                        generatedUtc = DateTimeOffset.UtcNow,
+                        finalizedUtc = (DateTimeOffset?)null,
+                        fileName = "",
+                        relativePath = "",
+                        previewDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jfXcAAAAASUVORK5CYII=",
+                    },
+                    exits = new { north = (int?)null, east = (int?)null, south = (int?)null, west = (int?)null, up = (int?)null, down = (int?)null }
+                }
+            },
+            items = Array.Empty<object>(),
+            characters = Array.Empty<object>()
+        };
+
+        try
+        {
+            var response = await client.PostAsJsonAsync("/api/gonf/save", request);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.True(File.Exists(savePath));
+
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(savePath));
+            var room = document.RootElement.GetProperty("rooms").EnumerateArray().Single();
+            var image = room.GetProperty("image");
+
+            Assert.Equal("finalized", image.GetProperty("imageStatus").GetString());
+            Assert.Equal(2, image.GetProperty("attemptIndex").GetInt32());
+            Assert.Equal("seed-123", image.GetProperty("generationSeed").GetString());
+            Assert.Equal(string.Empty, image.GetProperty("previewDataUrl").GetString());
+
+            var fileName = image.GetProperty("fileName").GetString();
+            Assert.False(string.IsNullOrWhiteSpace(fileName));
+
+            var imagePath = Path.Combine(gonfDirectory, "img", fileName!);
+            Assert.True(File.Exists(imagePath));
+        }
+        finally
+        {
+            if (Directory.Exists(gonfDirectory))
+            {
+                Directory.Delete(gonfDirectory, recursive: true);
             }
         }
     }
