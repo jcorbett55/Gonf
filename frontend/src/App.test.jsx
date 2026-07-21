@@ -212,6 +212,33 @@ describe('App', () => {
     expect(screen.queryByRole('button', { name: 'Edit contained item Loose Key' })).not.toBeInTheDocument()
   })
 
+  it('allows editing a carried item from character details in room panel', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+    fireEvent.change(screen.getByLabelText('Gonf Name'), { target: { value: 'TestGonf' } })
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Items' }))
+    fireEvent.change(screen.getByLabelText('Item Name'), { target: { value: 'Loose Key' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Item' }))
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Character' }))
+    fireEvent.change(screen.getByLabelText('Character Name'), { target: { value: 'Reggie Winthrope III' } })
+    const characterContainsList = screen.getByRole('listbox')
+    const looseKeyOption = screen.getByRole('option', { name: 'Loose Key' })
+    looseKeyOption.selected = true
+    fireEvent.change(characterContainsList)
+    fireEvent.click(screen.getByRole('button', { name: 'Save Character' }))
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Floor -5' }))
+    fireEvent.click(screen.getByRole('button', { name: 'View characters found in Secret Storage' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit carried item Loose Key' }))
+
+    expect(screen.getByRole('tab', { name: 'Items', selected: true })).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Loose Key')).toBeInTheDocument()
+  })
+
   it('auto-creates Secret Storage for unassigned items and blocks room-form edits', () => {
     render(<App />)
 

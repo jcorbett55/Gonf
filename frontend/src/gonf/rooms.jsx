@@ -875,7 +875,14 @@ export function renderSelectedRoomPanel({
                     <ul className="gg-item-contents-list">
                       {character.characterContains.map((contentItemId) => (
                         <li key={`${character.characterId}-${contentItemId}`}>
-                          <span className="gg-item-contents-static-text">{itemNameById(itemsById, contentItemId)}</span>
+                          <button
+                            type="button"
+                            className="gg-item-contents-button"
+                            onClick={() => onSelectContainedItem(String(contentItemId))}
+                            aria-label={`Edit carried item ${itemNameById(itemsById, contentItemId)}`}
+                          >
+                            {itemNameById(itemsById, contentItemId)}
+                          </button>
                         </li>
                       ))}
                     </ul>
