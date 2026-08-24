@@ -1,5 +1,171 @@
-import { DOTNET_DECIMAL_MAX, toNullableNumber } from './shared'
-import { roomNameById } from './rooms'
+import { API_BASE_URL, DOTNET_DECIMAL_MAX, toNullableNumber } from './shared'
+import {
+  createEmptyRoomImage,
+  generateRoomPreviewPngDataUrl,
+  normalizeRoomImageForState,
+  roomNameById,
+} from './rooms'
+
+const ITEM_IMAGE_JOB_POLL_DELAY_MS = 2000
+const ITEM_IMAGE_JOB_MAX_POLLS = 300
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
+
+function buildProviderError(payload, fallbackMessage) {
+  const error = payload?.errors?.[0]
+
+  return {
+    success: false,
+    errorCode: error?.code ?? payload?.data?.errorCode ?? 'IMAGE_GENERATION_FAILED',
+    errorMessage: error?.message ?? payload?.data?.errorMessage ?? fallbackMessage,
+  }
+}
+
+function buildProviderSuccess(payload) {
+  const previewDataUrl = payload?.data?.previewDataUrl
+  if (typeof previewDataUrl !== 'string' || !previewDataUrl.startsWith('data:image/')) {
+    return {
+      success: false,
+      errorCode: 'IMAGE_GENERATION_FAILED',
+      errorMessage: 'Image provider returned an invalid image payload.',
+    }
+  }
+
+  return {
+    success: true,
+    previewDataUrl,
+  }
+}
+
+export function createEmptyItemImage() {
+  return createEmptyRoomImage()
+}
+
+export function normalizeItemImageForState(rawImage) {
+  return normalizeRoomImageForState(rawImage)
+}
+
+export function createItemImageCandidate(item, attemptIndex) {
+  const generationSeed =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${attemptIndex}`
+  const placeholderPreview = generateRoomPreviewPngDataUrl(
+    item?.itemName ?? '',
+    item?.itemDescription ?? '',
+    generationSeed,
+    attemptIndex,
+  )
+
+  return {
+    imageStatus: 'generating',
+    attemptIndex,
+    generationSeed,
+    generatedUtc: new Date().toISOString(),
+    finalizedUtc: null,
+    fileName: '',
+    relativePath: '',
+    previewDataUrl: placeholderPreview,
+  }
+}
+
+export function finalizeItemImageState(item) {
+  const currentImage = normalizeItemImageForState(item.image)
+  if (!currentImage.previewDataUrl) {
+    return currentImage
+  }
+
+  return {
+    ...currentImage,
+    imageStatus: 'finalized',
+    finalizedUtc: new Date().toISOString(),
+  }
+}
+
+async function pollProviderItemImageJob(jobId) {
+  for (let attempt = 0; attempt < ITEM_IMAGE_JOB_MAX_POLLS; attempt += 1) {
+    const response = await fetch(`${API_BASE_URL}/api/item-image/generate-jobs/${encodeURIComponent(jobId)}`)
+    const payload = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      return buildProviderError(payload, 'Image generation failed.')
+    }
+
+    const status = String(payload?.data?.status ?? '')
+    if (status === 'completed') {
+      return buildProviderSuccess(payload)
+    }
+
+    if (status === 'failed') {
+      return buildProviderError(payload, 'Image generation failed.')
+    }
+
+    if (status !== 'queued' && status !== 'processing') {
+      return {
+        success: false,
+        errorCode: 'IMAGE_GENERATION_FAILED',
+        errorMessage: 'Image generation returned an invalid job status.',
+      }
+    }
+
+    await delay(ITEM_IMAGE_JOB_POLL_DELAY_MS)
+  }
+
+  return {
+    success: false,
+    errorCode: 'IMAGE_GENERATION_TIMEOUT',
+    errorMessage: 'Image generation is still running. Please try again shortly.',
+  }
+}
+
+export async function requestProviderItemImage(gonfName, item, imageState) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/item-image/generate-jobs`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        gonfName: gonfName.trim() || null,
+        itemId: item.itemId ?? null,
+        itemName: item.itemName,
+        itemDescription: item.itemDescription,
+        attemptIndex: imageState.attemptIndex,
+        generationSeed: imageState.generationSeed,
+      }),
+    })
+
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      return buildProviderError(payload, 'Image generation failed.')
+    }
+
+    if (typeof payload?.data?.previewDataUrl === 'string') {
+      return buildProviderSuccess(payload)
+    }
+
+    const jobId = payload?.data?.jobId
+    if (typeof jobId !== 'string' || jobId.length === 0) {
+      return {
+        success: false,
+        errorCode: 'IMAGE_GENERATION_FAILED',
+        errorMessage: 'Image generation job could not be started.',
+      }
+    }
+
+    return await pollProviderItemImageJob(jobId)
+  } catch {
+    return {
+      success: false,
+      errorCode: 'IMAGE_GENERATION_FAILED',
+      errorMessage: 'Could not reach the image provider.',
+    }
+  }
+}
 
 export function createEmptyItemForm() {
   return {
@@ -57,6 +223,7 @@ export function mapItemForState(rawItem, index) {
     canBeCarried: Boolean(rawItem.canBeCarried ?? rawItem.canCarry ?? false),
     itemLocation: itemLocation === null || itemLocation === undefined ? '' : String(itemLocation),
     itemContents,
+    image: normalizeItemImageForState(rawItem.image),
   }
 }
 
@@ -155,6 +322,7 @@ export function buildItemSaveResult({
 
   const editingItemId = toNullableNumber(itemForm.itemId)
   const nextItemId = editingItemId ?? (Math.max(0, ...currentItems.map((item) => item.itemId)) + 1)
+  const existingItemForImage = currentItems.find((item) => item.itemId === nextItemId)
   const savedItem = {
     itemId: nextItemId,
     itemName: itemForm.itemName.trim(),
@@ -165,6 +333,7 @@ export function buildItemSaveResult({
     canBeCarried: Boolean(itemForm.canBeCarried),
     itemLocation: itemLocation === null ? '' : String(itemLocation),
     itemContents: itemForm.canHoldItems ? selectedContents : [],
+    image: existingItemForImage?.image ?? createEmptyItemImage(),
   }
 
   const normalizedItems = currentItems.map((item) => {

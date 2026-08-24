@@ -6,6 +6,7 @@ import {
   buildFloorConnections,
   canEditRoom,
   createEmptyForm,
+  createEmptyRoomImage,
   createRoomImageCandidate,
   ensureSecretStorageRoom,
   finalizeRoomImageState,
@@ -24,11 +25,21 @@ import {
   roomToFormState,
   stripSecretStorageExits,
 } from './gonf/rooms'
-import { createEmptyItemForm, buildItemSaveResult, getValidatedNumericValue } from './gonf/items'
+import {
+  createEmptyItemForm,
+  buildItemSaveResult,
+  getValidatedNumericValue,
+  createEmptyItemImage,
+  createItemImageCandidate,
+  finalizeItemImageState,
+  requestProviderItemImage,
+} from './gonf/items'
+import { uploadEntityImage } from './gonf/imageControls'
 import {
   buildCharacterSaveResult,
   createCharacterImageCandidate,
   createEmptyCharacterForm,
+  createEmptyCharacterImage,
   finalizeCharacterImageState,
   requestProviderCharacterImage,
 } from './gonf/characters'
@@ -169,6 +180,15 @@ export default function GonfGenerator() {
 
     return characters.find((character) => character.characterId === selectedCharacterId) ?? null
   }, [characters, characterForm.characterId])
+
+  const selectedItem = useMemo(() => {
+    const selectedItemId = toNullableNumber(itemForm.itemId)
+    if (selectedItemId === null) {
+      return null
+    }
+
+    return items.find((item) => item.itemId === selectedItemId) ?? null
+  }, [items, itemForm.itemId])
 
   const contentsOptions = useMemo(
     () =>
@@ -472,6 +492,43 @@ export default function GonfGenerator() {
     setStatusMessage(`Generated a new room image candidate for ${room.roomName}.`)
   }
 
+  const onUploadRoomImage = (room, file) => {
+    if (!room || !file) {
+      return
+    }
+
+    const nextAttemptIndex = Number(room.image?.attemptIndex ?? -1) + 1
+    const generationSeed = `upload-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    void (async () => {
+      const uploadResult = await uploadEntityImage('room', file, nextAttemptIndex, generationSeed)
+      if (!uploadResult.success) {
+        setStatusMessage(`Image upload failed for ${room.roomName}: ${uploadResult.errorMessage}`)
+        return
+      }
+
+      setRooms((currentRooms) =>
+        currentRooms.map((existingRoom) =>
+          existingRoom.roomId === room.roomId
+            ? {
+                ...existingRoom,
+                image: {
+                  ...createEmptyRoomImage(),
+                  imageStatus: 'candidate-ready',
+                  attemptIndex: nextAttemptIndex,
+                  generationSeed,
+                  generatedUtc: new Date().toISOString(),
+                  previewDataUrl: uploadResult.previewDataUrl,
+                },
+              }
+            : existingRoom,
+        ),
+      )
+
+      setStatusMessage(`Uploaded a new room image candidate for ${room.roomName}.`)
+    })()
+  }
+
   const onConfirmRoomImage = (room) => {
     if (!room) {
       return
@@ -539,20 +596,12 @@ export default function GonfGenerator() {
     setRooms((currentRooms) => {
       const nextRoomId = editingRoomId ?? (Math.max(0, ...currentRooms.map((room) => room.roomId)) + 1)
       const existingRoomForImage = currentRooms.find((room) => room.roomId === nextRoomId)
-      const previousAttemptIndex = Number(existingRoomForImage?.image?.attemptIndex ?? -1)
-      const nextAttemptIndex = previousAttemptIndex + 1
 
       const savedRoom = {
         roomId: nextRoomId,
         roomName: form.roomName.trim(),
         roomDescription: form.roomDescription.trim(),
-        image: createRoomImageCandidate(
-          {
-            roomName: form.roomName.trim(),
-            roomDescription: form.roomDescription.trim(),
-          },
-          nextAttemptIndex,
-        ),
+        image: existingRoomForImage?.image ?? createEmptyRoomImage(),
         roomFloor,
         exits: {
           north: toNullableNumber(form.northExit),
@@ -564,106 +613,13 @@ export default function GonfGenerator() {
         },
       }
 
-      void (async () => {
-        const providerResult = await requestProviderRoomImage(gonfName, savedRoom, savedRoom.image)
-        if (!providerResult.success) {
-          if (isProviderNotConfiguredError(providerResult)) {
-            const fallbackPreview = generateRoomPreviewPngDataUrl(
-              savedRoom.roomName,
-              savedRoom.roomDescription,
-              savedRoom.image.generationSeed,
-              savedRoom.image.attemptIndex,
-            )
-
-            setRooms((latestRooms) =>
-              latestRooms.map((latestRoom) =>
-                latestRoom.roomId === nextRoomId && (latestRoom.image?.generationSeed ?? '') === savedRoom.image.generationSeed
-                  ? {
-                      ...latestRoom,
-                      image: {
-                        ...latestRoom.image,
-                        imageStatus: 'candidate-ready',
-                        previewDataUrl: fallbackPreview,
-                      },
-                    }
-                  : latestRoom,
-              ),
-            )
-
-            setStatusMessage(
-              `Room saved. Image provider key is not configured, so a local preview was generated for ${savedRoom.roomName}.`,
-            )
-            return
-          }
-
-          if (isProviderTimeoutError(providerResult)) {
-            setRooms((latestRooms) =>
-              latestRooms.map((latestRoom) =>
-                latestRoom.roomId === nextRoomId && (latestRoom.image?.generationSeed ?? '') === savedRoom.image.generationSeed
-                  ? {
-                      ...latestRoom,
-                      image: {
-                        ...latestRoom.image,
-                        imageStatus: 'generating',
-                      },
-                    }
-                  : latestRoom,
-              ),
-            )
-
-            setStatusMessage(
-              `Room saved. Image generation for ${savedRoom.roomName} is still running and will complete shortly.`,
-            )
-            return
-          }
-
-          setRooms((latestRooms) =>
-            latestRooms.map((latestRoom) =>
-              latestRoom.roomId === nextRoomId && (latestRoom.image?.generationSeed ?? '') === savedRoom.image.generationSeed
-                ? {
-                    ...latestRoom,
-                    image: {
-                      ...latestRoom.image,
-                      imageStatus: 'error',
-                    },
-                  }
-                : latestRoom,
-            ),
-          )
-
-          setStatusMessage(`Room saved, but image generation failed: ${providerResult.errorMessage}`)
-          return
-        }
-
-        setRooms((latestRooms) =>
-          latestRooms.map((latestRoom) => {
-            if (latestRoom.roomId !== nextRoomId) {
-              return latestRoom
-            }
-
-            if ((latestRoom.image?.generationSeed ?? '') !== savedRoom.image.generationSeed) {
-              return latestRoom
-            }
-
-            return {
-              ...latestRoom,
-              image: {
-                ...latestRoom.image,
-                imageStatus: 'candidate-ready',
-                previewDataUrl: providerResult.previewDataUrl,
-              },
-            }
-          }),
-        )
-      })()
-
       const nextRooms = stripSecretStorageExits(applyReciprocalLinks(currentRooms, savedRoom))
 
       setSelectedRoomId(nextRoomId)
       setSelectedRoomPanelMode('room')
       setActiveFloor(roomFloor)
       setForm(createEmptyForm())
-      setStatusMessage(`Saved room ${savedRoom.roomName} and generated a room image candidate.`)
+      setStatusMessage(`Saved room ${savedRoom.roomName}. Use Upload Image or Generate Image to add a picture.`)
 
       return nextRooms
     })
@@ -734,123 +690,18 @@ export default function GonfGenerator() {
         character.characterName === characterForm.characterName.trim(),
     )
 
-    const nextAttemptIndex = Number(savedCharacter?.image?.attemptIndex ?? -1) + 1
-    const nextImage = createCharacterImageCandidate(savedCharacter, nextAttemptIndex)
-
-    const nextCharactersWithCandidate = characterSaveResult.nextCharacters.map((character) =>
-      character.characterId === savedCharacter?.characterId
-        ? {
-            ...character,
-            image: nextImage,
-          }
-        : character,
-    )
-
     setRooms(characterSaveResult.nextRooms)
     setItems(characterSaveResult.nextItems)
-    setCharacters(nextCharactersWithCandidate)
+    setCharacters(characterSaveResult.nextCharacters)
     setCharacterForm(createEmptyCharacterForm())
     setSelectedRoomPanelMode('characters')
     setSelectedRoomId(characterSaveResult.nextSelectedRoomId)
     setActiveFloor(characterSaveResult.nextSelectedFloor)
-    setStatusMessage(`${characterSaveResult.message} Generated a character image candidate.`)
+    setStatusMessage(`${characterSaveResult.message} Use Upload Image or Generate Image to add a picture.`)
 
     if (!savedCharacter) {
       return
     }
-
-    void (async () => {
-      const providerResult = await requestProviderCharacterImage(gonfName, savedCharacter, nextImage)
-      if (!providerResult.success) {
-        if (isProviderNotConfiguredError(providerResult)) {
-          const fallbackPreview = generateRoomPreviewPngDataUrl(
-            savedCharacter.characterName,
-            savedCharacter.characterDescription,
-            nextImage.generationSeed,
-            nextImage.attemptIndex,
-          )
-
-          setCharacters((latestCharacters) =>
-            latestCharacters.map((latestCharacter) =>
-              latestCharacter.characterId === savedCharacter.characterId && (latestCharacter.image?.generationSeed ?? '') === nextImage.generationSeed
-                ? {
-                    ...latestCharacter,
-                    image: {
-                      ...latestCharacter.image,
-                      imageStatus: 'candidate-ready',
-                      previewDataUrl: fallbackPreview,
-                    },
-                  }
-                : latestCharacter,
-            ),
-          )
-
-          setStatusMessage(
-            `Character saved. Image provider key is not configured, so a local preview was generated for ${savedCharacter.characterName}.`,
-          )
-          return
-        }
-
-        if (isProviderTimeoutError(providerResult)) {
-          setCharacters((latestCharacters) =>
-            latestCharacters.map((latestCharacter) =>
-              latestCharacter.characterId === savedCharacter.characterId && (latestCharacter.image?.generationSeed ?? '') === nextImage.generationSeed
-                ? {
-                    ...latestCharacter,
-                    image: {
-                      ...latestCharacter.image,
-                      imageStatus: 'generating',
-                    },
-                  }
-                : latestCharacter,
-            ),
-          )
-
-          setStatusMessage(
-            `Character saved. Image generation for ${savedCharacter.characterName} is still running and will complete shortly.`,
-          )
-          return
-        }
-
-        setCharacters((latestCharacters) =>
-          latestCharacters.map((latestCharacter) =>
-            latestCharacter.characterId === savedCharacter.characterId && (latestCharacter.image?.generationSeed ?? '') === nextImage.generationSeed
-              ? {
-                  ...latestCharacter,
-                  image: {
-                    ...latestCharacter.image,
-                    imageStatus: 'error',
-                  },
-                }
-              : latestCharacter,
-          ),
-        )
-
-        setStatusMessage(`Character saved, but image generation failed: ${providerResult.errorMessage}`)
-        return
-      }
-
-      setCharacters((latestCharacters) =>
-        latestCharacters.map((latestCharacter) => {
-          if (latestCharacter.characterId !== savedCharacter.characterId) {
-            return latestCharacter
-          }
-
-          if ((latestCharacter.image?.generationSeed ?? '') !== nextImage.generationSeed) {
-            return latestCharacter
-          }
-
-          return {
-            ...latestCharacter,
-            image: {
-              ...latestCharacter.image,
-              imageStatus: 'candidate-ready',
-              previewDataUrl: providerResult.previewDataUrl,
-            },
-          }
-        }),
-      )
-    })()
   }
 
   const onRetryCharacterImage = (character) => {
@@ -968,6 +819,43 @@ export default function GonfGenerator() {
     setStatusMessage(`Generated a new character image candidate for ${character.characterName}.`)
   }
 
+  const onUploadCharacterImage = (character, file) => {
+    if (!character || !file) {
+      return
+    }
+
+    const nextAttemptIndex = Number(character.image?.attemptIndex ?? -1) + 1
+    const generationSeed = `upload-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    void (async () => {
+      const uploadResult = await uploadEntityImage('character', file, nextAttemptIndex, generationSeed)
+      if (!uploadResult.success) {
+        setStatusMessage(`Image upload failed for ${character.characterName}: ${uploadResult.errorMessage}`)
+        return
+      }
+
+      setCharacters((currentCharacters) =>
+        currentCharacters.map((existingCharacter) =>
+          existingCharacter.characterId === character.characterId
+            ? {
+                ...existingCharacter,
+                image: {
+                  ...createEmptyCharacterImage(),
+                  imageStatus: 'candidate-ready',
+                  attemptIndex: nextAttemptIndex,
+                  generationSeed,
+                  generatedUtc: new Date().toISOString(),
+                  previewDataUrl: uploadResult.previewDataUrl,
+                },
+              }
+            : existingCharacter,
+        ),
+      )
+
+      setStatusMessage(`Uploaded a new character image candidate for ${character.characterName}.`)
+    })()
+  }
+
   const onConfirmCharacterImage = (character) => {
     if (!character) {
       return
@@ -985,6 +873,177 @@ export default function GonfGenerator() {
     )
 
     setStatusMessage(`Finalized the character image for ${character.characterName}.`)
+  }
+
+  const onRetryItemImage = (item) => {
+    if (!item) {
+      return
+    }
+
+    const nextAttemptIndex = Number(item.image?.attemptIndex ?? -1) + 1
+    const nextImage = createItemImageCandidate(item, nextAttemptIndex)
+
+    setItems((currentItems) =>
+      currentItems.map((existingItem) =>
+        existingItem.itemId === item.itemId
+          ? {
+              ...existingItem,
+              image: nextImage,
+            }
+          : existingItem,
+      ),
+    )
+
+    void (async () => {
+      const providerResult = await requestProviderItemImage(gonfName, item, nextImage)
+      if (!providerResult.success) {
+        if (isProviderNotConfiguredError(providerResult)) {
+          const fallbackPreview = generateRoomPreviewPngDataUrl(
+            item.itemName,
+            item.itemDescription,
+            nextImage.generationSeed,
+            nextImage.attemptIndex,
+          )
+
+          setItems((currentItems) =>
+            currentItems.map((existingItem) =>
+              existingItem.itemId === item.itemId && (existingItem.image?.generationSeed ?? '') === nextImage.generationSeed
+                ? {
+                    ...existingItem,
+                    image: {
+                      ...existingItem.image,
+                      imageStatus: 'candidate-ready',
+                      previewDataUrl: fallbackPreview,
+                    },
+                  }
+                : existingItem,
+            ),
+          )
+
+          setStatusMessage(
+            `Image provider key not configured. Generated a local preview for ${item.itemName} instead.`,
+          )
+          return
+        }
+
+        if (isProviderTimeoutError(providerResult)) {
+          setItems((currentItems) =>
+            currentItems.map((existingItem) =>
+              existingItem.itemId === item.itemId && (existingItem.image?.generationSeed ?? '') === nextImage.generationSeed
+                ? {
+                    ...existingItem,
+                    image: {
+                      ...existingItem.image,
+                      imageStatus: 'generating',
+                    },
+                  }
+                : existingItem,
+            ),
+          )
+
+          setStatusMessage(
+            `Image generation is still running for ${item.itemName}. Check back shortly and retry if needed.`,
+          )
+          return
+        }
+
+        setItems((currentItems) =>
+          currentItems.map((existingItem) =>
+            existingItem.itemId === item.itemId && (existingItem.image?.generationSeed ?? '') === nextImage.generationSeed
+              ? {
+                  ...existingItem,
+                  image: {
+                    ...existingItem.image,
+                    imageStatus: 'error',
+                  },
+                }
+              : existingItem,
+          ),
+        )
+
+        setStatusMessage(`Image generation failed for ${item.itemName}: ${providerResult.errorMessage}`)
+        return
+      }
+
+      setItems((currentItems) =>
+        currentItems.map((existingItem) => {
+          if (existingItem.itemId !== item.itemId) {
+            return existingItem
+          }
+
+          if ((existingItem.image?.generationSeed ?? '') !== nextImage.generationSeed) {
+            return existingItem
+          }
+
+          return {
+            ...existingItem,
+            image: {
+              ...existingItem.image,
+              imageStatus: 'candidate-ready',
+              previewDataUrl: providerResult.previewDataUrl,
+            },
+          }
+        }),
+      )
+    })()
+
+    setStatusMessage(`Generated a new item image candidate for ${item.itemName}.`)
+  }
+
+  const onUploadItemImage = (item, file) => {
+    if (!item || !file) {
+      return
+    }
+
+    const nextAttemptIndex = Number(item.image?.attemptIndex ?? -1) + 1
+    const generationSeed = `upload-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    void (async () => {
+      const uploadResult = await uploadEntityImage('item', file, nextAttemptIndex, generationSeed)
+      if (!uploadResult.success) {
+        setStatusMessage(`Image upload failed for ${item.itemName}: ${uploadResult.errorMessage}`)
+        return
+      }
+
+      setItems((currentItems) =>
+        currentItems.map((existingItem) =>
+          existingItem.itemId === item.itemId
+            ? {
+                ...existingItem,
+                image: {
+                  ...createEmptyItemImage(),
+                  imageStatus: 'candidate-ready',
+                  attemptIndex: nextAttemptIndex,
+                  generationSeed,
+                  generatedUtc: new Date().toISOString(),
+                  previewDataUrl: uploadResult.previewDataUrl,
+                },
+              }
+            : existingItem,
+        ),
+      )
+
+      setStatusMessage(`Uploaded a new item image candidate for ${item.itemName}.`)
+    })()
+  }
+
+  const onConfirmItemImage = (item) => {
+    if (!item) {
+      return
+    }
+
+    setItems((currentItems) =>
+      currentItems.map((existingItem) =>
+        existingItem.itemId === item.itemId
+          ? {
+              ...existingItem,
+              image: finalizeItemImageState(existingItem),
+            }
+          : existingItem,
+      ),
+    )
+
+    setStatusMessage(`Finalized the item image for ${item.itemName}.`)
   }
 
   const onSaveGonf = async () => {
@@ -1490,6 +1549,68 @@ export default function GonfGenerator() {
                   <small>Select one or more items contained by this object.</small>
                 </label>
               )}
+
+              <section className="gg-room-image-preview gg-wide" aria-label="Item image preview">
+                <div className={`gg-room-image-frame ${selectedItem?.image?.imageStatus === 'generating' ? 'is-generating' : ''}`}>
+                  {selectedItem?.image?.previewDataUrl ? (
+                    <img
+                      src={selectedItem.image.previewDataUrl}
+                      alt={`Generated item preview for ${selectedItem.itemName}`}
+                    />
+                  ) : (
+                    <div className="gg-room-image-empty">No generated image yet.</div>
+                  )}
+                  {selectedItem?.image?.imageStatus === 'generating' && (
+                    <div className="gg-room-image-badge" aria-live="polite">
+                      Generating final render...
+                    </div>
+                  )}
+                </div>
+
+                <div className="gg-room-image-actions">
+                  <label className="gg-room-image-upload" title="Upload image">
+                    <span aria-hidden="true">⬆</span>
+                    <input
+                      type="file"
+                      accept=".png,.jpg,.jpeg,.gif,image/png,image/jpeg,image/gif"
+                      className="gg-room-image-upload-input"
+                      disabled={!selectedItem}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0]
+                        event.target.value = ''
+                        if (file && selectedItem) {
+                          onUploadItemImage(selectedItem, file)
+                        }
+                      }}
+                      aria-label={`Upload image for ${selectedItem?.itemName ?? 'item'}`}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="gg-room-image-retry"
+                    onClick={() => onRetryItemImage(selectedItem)}
+                    aria-label={`Generate image for ${selectedItem?.itemName ?? 'item'}`}
+                    title="Generate image"
+                    disabled={!selectedItem}
+                  >
+                    <span aria-hidden="true">⟳</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="gg-room-image-confirm"
+                    onClick={() => onConfirmItemImage(selectedItem)}
+                    aria-label={`Confirm image for ${selectedItem?.itemName ?? 'item'}`}
+                    title="Confirm image"
+                    disabled={!selectedItem}
+                  >
+                    <span aria-hidden="true">✓</span>
+                  </button>
+                </div>
+
+                <p className="gg-room-image-status">
+                  Image status: {selectedItem?.image?.imageStatus ?? 'none'}
+                </p>
+              </section>
             </div>
 
             <div className="gg-button-row">
@@ -1588,12 +1709,29 @@ export default function GonfGenerator() {
                 </div>
 
                 <div className="gg-room-image-actions">
+                  <label className="gg-room-image-upload" title="Upload image">
+                    <span aria-hidden="true">⬆</span>
+                    <input
+                      type="file"
+                      accept=".png,.jpg,.jpeg,.gif,image/png,image/jpeg,image/gif"
+                      className="gg-room-image-upload-input"
+                      disabled={!selectedCharacter}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0]
+                        event.target.value = ''
+                        if (file && selectedCharacter) {
+                          onUploadCharacterImage(selectedCharacter, file)
+                        }
+                      }}
+                      aria-label={`Upload image for ${selectedCharacter?.characterName ?? 'character'}`}
+                    />
+                  </label>
                   <button
                     type="button"
                     className="gg-room-image-retry"
                     onClick={() => onRetryCharacterImage(selectedCharacter)}
-                    aria-label={`Retry image for ${selectedCharacter?.characterName ?? 'character'}`}
-                    title="Retry image"
+                    aria-label={`Generate image for ${selectedCharacter?.characterName ?? 'character'}`}
+                    title="Generate image"
                     disabled={!selectedCharacter}
                   >
                     <span aria-hidden="true">↻</span>
@@ -1752,8 +1890,10 @@ export default function GonfGenerator() {
                   roomsById,
                   itemsById,
                   onRetryRoomImage,
+                  onUploadRoomImage,
                   onConfirmRoomImage,
                   onRetryCharacterImage,
+                  onUploadCharacterImage,
                   onConfirmCharacterImage,
                   onSelectItemForEdit,
                   onSelectContainedItem,

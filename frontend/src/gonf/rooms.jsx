@@ -797,8 +797,10 @@ export function renderSelectedRoomPanel({
   roomsById,
   itemsById,
   onRetryRoomImage,
+  onUploadRoomImage,
   onConfirmRoomImage,
   onRetryCharacterImage,
+  onUploadCharacterImage,
   onConfirmCharacterImage,
   onSelectItemForEdit,
   onSelectContainedItem,
@@ -889,12 +891,28 @@ export function renderSelectedRoomPanel({
                   </div>
 
                   <div className="gg-room-image-actions">
+                    <label className="gg-room-image-upload" title="Upload image">
+                      <span aria-hidden="true">⬆</span>
+                      <input
+                        type="file"
+                        accept=".png,.jpg,.jpeg,.gif,image/png,image/jpeg,image/gif"
+                        className="gg-room-image-upload-input"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0]
+                          event.target.value = ''
+                          if (file) {
+                            onUploadCharacterImage(character, file)
+                          }
+                        }}
+                        aria-label={`Upload image for ${character.characterName}`}
+                      />
+                    </label>
                     <button
                       type="button"
                       className="gg-room-image-retry"
                       onClick={() => onRetryCharacterImage(character)}
-                      aria-label={`Retry image for ${character.characterName}`}
-                      title="Retry image"
+                      aria-label={`Generate image for ${character.characterName}`}
+                      title="Generate image"
                     >
                       <span aria-hidden="true">↻</span>
                     </button>
@@ -956,12 +974,28 @@ export function renderSelectedRoomPanel({
         </div>
 
         <div className="gg-room-image-actions">
+          <label className="gg-room-image-upload" title="Upload image">
+            <span aria-hidden="true">⬆</span>
+            <input
+              type="file"
+              accept=".png,.jpg,.jpeg,.gif,image/png,image/jpeg,image/gif"
+              className="gg-room-image-upload-input"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                if (file) {
+                  onUploadRoomImage(selectedRoom, file)
+                }
+              }}
+              aria-label={`Upload image for ${selectedRoom.roomName}`}
+            />
+          </label>
           <button
             type="button"
             className="gg-room-image-retry"
             onClick={() => onRetryRoomImage(selectedRoom)}
-            aria-label={`Retry image for ${selectedRoom.roomName}`}
-            title="Retry image"
+            aria-label={`Generate image for ${selectedRoom.roomName}`}
+            title="Generate image"
           >
             <span aria-hidden="true">↻</span>
           </button>
