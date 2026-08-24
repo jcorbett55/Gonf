@@ -30,7 +30,7 @@ export function parseLoadedGonf(payload) {
 
   const characters = Array.isArray(payload.characters)
     ? payload.characters
-        .map((rawCharacter, index) => mapCharacterForState(rawCharacter, index))
+        .map((rawCharacter, index) => mapCharacterForState(rawCharacter, index, String(payload.gonfName ?? '')))
         .filter(Boolean)
     : []
 

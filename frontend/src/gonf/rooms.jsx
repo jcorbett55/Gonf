@@ -798,6 +798,8 @@ export function renderSelectedRoomPanel({
   itemsById,
   onRetryRoomImage,
   onConfirmRoomImage,
+  onRetryCharacterImage,
+  onConfirmCharacterImage,
   onSelectItemForEdit,
   onSelectContainedItem,
   onSelectCharacterForEdit,
@@ -869,6 +871,46 @@ export function renderSelectedRoomPanel({
                   <strong>{character.characterName}</strong>
                   <span>{character.characterDescription || 'No description.'}</span>
                 </button>
+                <section className="gg-room-image-preview" aria-label={`Character image preview for ${character.characterName}`}>
+                  <div className={`gg-room-image-frame ${character.image?.imageStatus === 'generating' ? 'is-generating' : ''}`}>
+                    {character.image?.previewDataUrl ? (
+                      <img
+                        src={character.image.previewDataUrl}
+                        alt={`Generated character preview for ${character.characterName}`}
+                      />
+                    ) : (
+                      <div className="gg-room-image-empty">No generated image yet.</div>
+                    )}
+                    {character.image?.imageStatus === 'generating' && (
+                      <div className="gg-room-image-badge" aria-live="polite">
+                        Generating final render...
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="gg-room-image-actions">
+                    <button
+                      type="button"
+                      className="gg-room-image-retry"
+                      onClick={() => onRetryCharacterImage(character)}
+                      aria-label={`Retry image for ${character.characterName}`}
+                      title="Retry image"
+                    >
+                      <span aria-hidden="true">↻</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="gg-room-image-confirm"
+                      onClick={() => onConfirmCharacterImage(character)}
+                      aria-label={`Confirm image for ${character.characterName}`}
+                      title="Confirm image"
+                    >
+                      <span aria-hidden="true">✓</span>
+                    </button>
+                  </div>
+
+                  <p className="gg-room-image-status">Image status: {character.image?.imageStatus ?? 'none'}</p>
+                </section>
                 {Array.isArray(character.characterContains) && character.characterContains.length > 0 && (
                   <div className="gg-item-contents-block">
                     <p className="gg-item-contents-title">Carries</p>

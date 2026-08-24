@@ -492,4 +492,87 @@ describe('App', () => {
       fetchSpy.mockRestore()
     }
   })
+
+  it('retries and confirms character image, then saves character image metadata', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockImplementation(async (url) => {
+      const target = String(url)
+
+      if (target.includes('/api/character-image/generate-jobs')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            code: 200,
+            success: true,
+            errors: [],
+            data: {
+              previewDataUrl:
+                'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jfXcAAAAASUVORK5CYII=',
+              model: 'gpt-image-1',
+            },
+          }),
+        }
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          code: 200,
+          success: true,
+          errors: [],
+          data: {
+            path: 'C:\\gonf\\TestGonf\\TestGonf.json',
+            message: 'Saved Gonf to C:\\gonf\\TestGonf\\TestGonf.json.',
+          },
+        }),
+      }
+    })
+
+    try {
+      render(<App />)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Gonf Generator' }))
+      fireEvent.change(screen.getByLabelText('Gonf Name'), { target: { value: 'TestGonf' } })
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Character' }))
+      fireEvent.change(screen.getByLabelText('Character Name'), { target: { value: 'Ava' } })
+      fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Keen-eyed scout.' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Save Character' }))
+
+      expect(screen.getByText(/generated a character image candidate/i)).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Floor -5' }))
+      fireEvent.click(screen.getByRole('button', { name: 'View characters found in Secret Storage' }))
+
+      expect(await screen.findByRole('img', { name: /generated character preview for ava/i })).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Retry image for Ava' }))
+      expect(screen.getByText(/new character image candidate for Ava/i)).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm image for Ava' }))
+      expect(screen.getByText(/finalized the character image for Ava/i)).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save Gonf' }))
+
+      await waitFor(() => {
+        const hasSaveCall = fetchSpy.mock.calls.some(([requestUrl]) => String(requestUrl).includes('/api/gonf/save'))
+        expect(hasSaveCall).toBe(true)
+      })
+
+      const saveCall = fetchSpy.mock.calls.find(([requestUrl]) => String(requestUrl).includes('/api/gonf/save'))
+      const requestBody = JSON.parse(saveCall[1].body)
+
+      expect(requestBody.characters).toHaveLength(1)
+      expect(requestBody.characters[0].characterName).toBe('Ava')
+      expect(requestBody.characters[0].image.imageStatus).toBe('finalized')
+      expect(typeof requestBody.characters[0].image.attemptIndex).toBe('number')
+      expect(typeof requestBody.characters[0].image.generationSeed).toBe('string')
+      expect(typeof requestBody.characters[0].image.previewDataUrl).toBe('string')
+      expect(requestBody.characters[0].image.generatedUtc).toBeTruthy()
+      expect(requestBody.characters[0].image.finalizedUtc).toBeTruthy()
+    } finally {
+      fetchSpy.mockRestore()
+    }
+  })
 })

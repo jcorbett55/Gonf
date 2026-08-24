@@ -25,7 +25,13 @@ import {
   stripSecretStorageExits,
 } from './gonf/rooms'
 import { createEmptyItemForm, buildItemSaveResult, getValidatedNumericValue } from './gonf/items'
-import { createEmptyCharacterForm, buildCharacterSaveResult } from './gonf/characters'
+import {
+  buildCharacterSaveResult,
+  createCharacterImageCandidate,
+  createEmptyCharacterForm,
+  finalizeCharacterImageState,
+  requestProviderCharacterImage,
+} from './gonf/characters'
 import { parseLoadedGonf } from './gonf/loaders'
 export default function GonfGenerator() {
   const [gonfName, setGonfName] = useState('')
@@ -154,6 +160,15 @@ export default function GonfGenerator() {
     }
     return map
   }, [items])
+
+  const selectedCharacter = useMemo(() => {
+    const selectedCharacterId = toNullableNumber(characterForm.characterId)
+    if (selectedCharacterId === null) {
+      return null
+    }
+
+    return characters.find((character) => character.characterId === selectedCharacterId) ?? null
+  }, [characters, characterForm.characterId])
 
   const contentsOptions = useMemo(
     () =>
@@ -714,14 +729,262 @@ export default function GonfGenerator() {
       return
     }
 
+    const savedCharacter = characterSaveResult.nextCharacters.find(
+      (character) => character.characterId === toNullableNumber(characterForm.characterId) ||
+        character.characterName === characterForm.characterName.trim(),
+    )
+
+    const nextAttemptIndex = Number(savedCharacter?.image?.attemptIndex ?? -1) + 1
+    const nextImage = createCharacterImageCandidate(savedCharacter, nextAttemptIndex)
+
+    const nextCharactersWithCandidate = characterSaveResult.nextCharacters.map((character) =>
+      character.characterId === savedCharacter?.characterId
+        ? {
+            ...character,
+            image: nextImage,
+          }
+        : character,
+    )
+
     setRooms(characterSaveResult.nextRooms)
     setItems(characterSaveResult.nextItems)
-    setCharacters(characterSaveResult.nextCharacters)
+    setCharacters(nextCharactersWithCandidate)
     setCharacterForm(createEmptyCharacterForm())
     setSelectedRoomPanelMode('characters')
     setSelectedRoomId(characterSaveResult.nextSelectedRoomId)
     setActiveFloor(characterSaveResult.nextSelectedFloor)
-    setStatusMessage(characterSaveResult.message)
+    setStatusMessage(`${characterSaveResult.message} Generated a character image candidate.`)
+
+    if (!savedCharacter) {
+      return
+    }
+
+    void (async () => {
+      const providerResult = await requestProviderCharacterImage(gonfName, savedCharacter, nextImage)
+      if (!providerResult.success) {
+        if (isProviderNotConfiguredError(providerResult)) {
+          const fallbackPreview = generateRoomPreviewPngDataUrl(
+            savedCharacter.characterName,
+            savedCharacter.characterDescription,
+            nextImage.generationSeed,
+            nextImage.attemptIndex,
+          )
+
+          setCharacters((latestCharacters) =>
+            latestCharacters.map((latestCharacter) =>
+              latestCharacter.characterId === savedCharacter.characterId && (latestCharacter.image?.generationSeed ?? '') === nextImage.generationSeed
+                ? {
+                    ...latestCharacter,
+                    image: {
+                      ...latestCharacter.image,
+                      imageStatus: 'candidate-ready',
+                      previewDataUrl: fallbackPreview,
+                    },
+                  }
+                : latestCharacter,
+            ),
+          )
+
+          setStatusMessage(
+            `Character saved. Image provider key is not configured, so a local preview was generated for ${savedCharacter.characterName}.`,
+          )
+          return
+        }
+
+        if (isProviderTimeoutError(providerResult)) {
+          setCharacters((latestCharacters) =>
+            latestCharacters.map((latestCharacter) =>
+              latestCharacter.characterId === savedCharacter.characterId && (latestCharacter.image?.generationSeed ?? '') === nextImage.generationSeed
+                ? {
+                    ...latestCharacter,
+                    image: {
+                      ...latestCharacter.image,
+                      imageStatus: 'generating',
+                    },
+                  }
+                : latestCharacter,
+            ),
+          )
+
+          setStatusMessage(
+            `Character saved. Image generation for ${savedCharacter.characterName} is still running and will complete shortly.`,
+          )
+          return
+        }
+
+        setCharacters((latestCharacters) =>
+          latestCharacters.map((latestCharacter) =>
+            latestCharacter.characterId === savedCharacter.characterId && (latestCharacter.image?.generationSeed ?? '') === nextImage.generationSeed
+              ? {
+                  ...latestCharacter,
+                  image: {
+                    ...latestCharacter.image,
+                    imageStatus: 'error',
+                  },
+                }
+              : latestCharacter,
+          ),
+        )
+
+        setStatusMessage(`Character saved, but image generation failed: ${providerResult.errorMessage}`)
+        return
+      }
+
+      setCharacters((latestCharacters) =>
+        latestCharacters.map((latestCharacter) => {
+          if (latestCharacter.characterId !== savedCharacter.characterId) {
+            return latestCharacter
+          }
+
+          if ((latestCharacter.image?.generationSeed ?? '') !== nextImage.generationSeed) {
+            return latestCharacter
+          }
+
+          return {
+            ...latestCharacter,
+            image: {
+              ...latestCharacter.image,
+              imageStatus: 'candidate-ready',
+              previewDataUrl: providerResult.previewDataUrl,
+            },
+          }
+        }),
+      )
+    })()
+  }
+
+  const onRetryCharacterImage = (character) => {
+    if (!character) {
+      return
+    }
+
+    const nextAttemptIndex = Number(character.image?.attemptIndex ?? -1) + 1
+    const nextImage = createCharacterImageCandidate(character, nextAttemptIndex)
+
+    setCharacters((currentCharacters) =>
+      currentCharacters.map((existingCharacter) =>
+        existingCharacter.characterId === character.characterId
+          ? {
+              ...existingCharacter,
+              image: nextImage,
+            }
+          : existingCharacter,
+      ),
+    )
+
+    void (async () => {
+      const providerResult = await requestProviderCharacterImage(gonfName, character, nextImage)
+      if (!providerResult.success) {
+        if (isProviderNotConfiguredError(providerResult)) {
+          const fallbackPreview = generateRoomPreviewPngDataUrl(
+            character.characterName,
+            character.characterDescription,
+            nextImage.generationSeed,
+            nextImage.attemptIndex,
+          )
+
+          setCharacters((currentCharacters) =>
+            currentCharacters.map((existingCharacter) =>
+              existingCharacter.characterId === character.characterId && (existingCharacter.image?.generationSeed ?? '') === nextImage.generationSeed
+                ? {
+                    ...existingCharacter,
+                    image: {
+                      ...existingCharacter.image,
+                      imageStatus: 'candidate-ready',
+                      previewDataUrl: fallbackPreview,
+                    },
+                  }
+                : existingCharacter,
+            ),
+          )
+
+          setStatusMessage(
+            `Image provider key not configured. Generated a local preview for ${character.characterName} instead.`,
+          )
+          return
+        }
+
+        if (isProviderTimeoutError(providerResult)) {
+          setCharacters((currentCharacters) =>
+            currentCharacters.map((existingCharacter) =>
+              existingCharacter.characterId === character.characterId && (existingCharacter.image?.generationSeed ?? '') === nextImage.generationSeed
+                ? {
+                    ...existingCharacter,
+                    image: {
+                      ...existingCharacter.image,
+                      imageStatus: 'generating',
+                    },
+                  }
+                : existingCharacter,
+            ),
+          )
+
+          setStatusMessage(
+            `Image generation is still running for ${character.characterName}. Check back shortly and retry if needed.`,
+          )
+          return
+        }
+
+        setCharacters((currentCharacters) =>
+          currentCharacters.map((existingCharacter) =>
+            existingCharacter.characterId === character.characterId && (existingCharacter.image?.generationSeed ?? '') === nextImage.generationSeed
+              ? {
+                  ...existingCharacter,
+                  image: {
+                    ...existingCharacter.image,
+                    imageStatus: 'error',
+                  },
+                }
+              : existingCharacter,
+          ),
+        )
+
+        setStatusMessage(`Image generation failed for ${character.characterName}: ${providerResult.errorMessage}`)
+        return
+      }
+
+      setCharacters((currentCharacters) =>
+        currentCharacters.map((existingCharacter) => {
+          if (existingCharacter.characterId !== character.characterId) {
+            return existingCharacter
+          }
+
+          if ((existingCharacter.image?.generationSeed ?? '') !== nextImage.generationSeed) {
+            return existingCharacter
+          }
+
+          return {
+            ...existingCharacter,
+            image: {
+              ...existingCharacter.image,
+              imageStatus: 'candidate-ready',
+              previewDataUrl: providerResult.previewDataUrl,
+            },
+          }
+        }),
+      )
+    })()
+
+    setStatusMessage(`Generated a new character image candidate for ${character.characterName}.`)
+  }
+
+  const onConfirmCharacterImage = (character) => {
+    if (!character) {
+      return
+    }
+
+    setCharacters((currentCharacters) =>
+      currentCharacters.map((existingCharacter) =>
+        existingCharacter.characterId === character.characterId
+          ? {
+              ...existingCharacter,
+              image: finalizeCharacterImageState(existingCharacter),
+            }
+          : existingCharacter,
+      ),
+    )
+
+    setStatusMessage(`Finalized the character image for ${character.characterName}.`)
   }
 
   const onSaveGonf = async () => {
@@ -749,6 +1012,7 @@ export default function GonfGenerator() {
             characterContains: Array.isArray(characterForm.characterContains)
               ? characterForm.characterContains.map(Number).filter((itemId) => Number.isFinite(itemId))
               : [],
+            image: null,
           },
         ]
       : []
@@ -827,6 +1091,16 @@ export default function GonfGenerator() {
         contains: Array.isArray(character.characterContains)
           ? character.characterContains.map(Number).filter((itemId) => Number.isFinite(itemId))
           : [],
+        image: {
+          imageStatus: character.image?.imageStatus ?? 'none',
+          attemptIndex: character.image?.attemptIndex ?? 0,
+          generationSeed: character.image?.generationSeed ?? '',
+          generatedUtc: character.image?.generatedUtc ?? null,
+          finalizedUtc: character.image?.finalizedUtc ?? null,
+          fileName: character.image?.fileName ?? '',
+          relativePath: character.image?.relativePath ?? '',
+          previewDataUrl: character.image?.previewDataUrl ?? '',
+        },
       })),
     }
 
@@ -1295,6 +1569,51 @@ export default function GonfGenerator() {
                 </select>
                 <small>Select one or more items carried by this character.</small>
               </label>
+
+              <section className="gg-room-image-preview gg-wide" aria-label="Character image preview">
+                <div className={`gg-room-image-frame ${selectedCharacter?.image?.imageStatus === 'generating' ? 'is-generating' : ''}`}>
+                  {selectedCharacter?.image?.previewDataUrl ? (
+                    <img
+                      src={selectedCharacter.image.previewDataUrl}
+                      alt={`Generated character preview for ${selectedCharacter.characterName}`}
+                    />
+                  ) : (
+                    <div className="gg-room-image-empty">No generated image yet.</div>
+                  )}
+                  {selectedCharacter?.image?.imageStatus === 'generating' && (
+                    <div className="gg-room-image-badge" aria-live="polite">
+                      Generating final render...
+                    </div>
+                  )}
+                </div>
+
+                <div className="gg-room-image-actions">
+                  <button
+                    type="button"
+                    className="gg-room-image-retry"
+                    onClick={() => onRetryCharacterImage(selectedCharacter)}
+                    aria-label={`Retry image for ${selectedCharacter?.characterName ?? 'character'}`}
+                    title="Retry image"
+                    disabled={!selectedCharacter}
+                  >
+                    <span aria-hidden="true">↻</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="gg-room-image-confirm"
+                    onClick={() => onConfirmCharacterImage(selectedCharacter)}
+                    aria-label={`Confirm image for ${selectedCharacter?.characterName ?? 'character'}`}
+                    title="Confirm image"
+                    disabled={!selectedCharacter}
+                  >
+                    <span aria-hidden="true">✓</span>
+                  </button>
+                </div>
+
+                <p className="gg-room-image-status">
+                  Image status: {selectedCharacter?.image?.imageStatus ?? 'none'}
+                </p>
+              </section>
             </div>
 
             <div className="gg-button-row">
@@ -1434,6 +1753,8 @@ export default function GonfGenerator() {
                   itemsById,
                   onRetryRoomImage,
                   onConfirmRoomImage,
+                  onRetryCharacterImage,
+                  onConfirmCharacterImage,
                   onSelectItemForEdit,
                   onSelectContainedItem,
                   onSelectCharacterForEdit,

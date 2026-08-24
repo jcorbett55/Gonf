@@ -67,4 +67,28 @@ public class RoomImageEndpointTests : IClassFixture<WebApplicationFactory<Progra
         Assert.True(payload.GetProperty("success").GetBoolean());
         Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("data").GetProperty("jobId").GetString()));
     }
+
+    [Fact]
+    public async Task QueueCharacterGenerationJob_ReturnsAcceptedWithJobId()
+    {
+        using var client = _factory.CreateClient();
+
+        var request = new
+        {
+            gonfName = "TestGonf",
+            characterId = 1,
+            characterName = "Ava",
+            characterDescription = "A careful adventurer in travel clothes.",
+            attemptIndex = 0,
+            generationSeed = "seed-character-test"
+        };
+
+        var response = await client.PostAsJsonAsync("/api/character-image/generate-jobs", request);
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+
+        var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(payload.GetProperty("success").GetBoolean());
+        Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("data").GetProperty("jobId").GetString()));
+    }
 }

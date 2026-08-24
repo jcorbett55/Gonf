@@ -177,6 +177,90 @@ public class SaveGonfEndpointTests : IClassFixture<WebApplicationFactory<Program
         }
     }
 
+    [Fact]
+    public async Task PostSaveWithCharacterImage_PersistsImageMetadataAndImageFile()
+    {
+        using var client = _factory.CreateClient();
+        var gonfName = $"CharImg_{Guid.NewGuid():N}";
+        var gonfDirectory = Path.Combine(@"C:\gonf\\", gonfName);
+        var savePath = Path.Combine(gonfDirectory, $"{gonfName}.json");
+
+        if (Directory.Exists(gonfDirectory))
+        {
+            Directory.Delete(gonfDirectory, recursive: true);
+        }
+
+        var request = new
+        {
+            gonfName,
+            rooms = new[]
+            {
+                new
+                {
+                    roomId = 1,
+                    roomName = "Room A",
+                    roomDescription = "First room",
+                    roomFloor = 1,
+                    exits = new { north = (int?)null, east = (int?)null, south = (int?)null, west = (int?)null, up = (int?)null, down = (int?)null }
+                }
+            },
+            items = Array.Empty<object>(),
+            characters = new[]
+            {
+                new
+                {
+                    characterId = 12,
+                    characterName = "Reggie Winthrope III",
+                    description = "A tall, lanky man.",
+                    location = 1,
+                    wanderer = false,
+                    contains = Array.Empty<int>(),
+                    image = new
+                    {
+                        imageStatus = "candidate-ready",
+                        attemptIndex = 3,
+                        generationSeed = "char-seed-abc",
+                        generatedUtc = DateTimeOffset.UtcNow,
+                        finalizedUtc = (DateTimeOffset?)null,
+                        fileName = "",
+                        relativePath = "",
+                        previewDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jfXcAAAAASUVORK5CYII=",
+                    }
+                }
+            }
+        };
+
+        try
+        {
+            var response = await client.PostAsJsonAsync("/api/gonf/save", request);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.True(File.Exists(savePath));
+
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(savePath));
+            var savedCharacter = document.RootElement.GetProperty("characters").EnumerateArray().Single();
+            var image = savedCharacter.GetProperty("image");
+
+            Assert.Equal("finalized", image.GetProperty("imageStatus").GetString());
+            Assert.Equal(3, image.GetProperty("attemptIndex").GetInt32());
+            Assert.Equal("char-seed-abc", image.GetProperty("generationSeed").GetString());
+            Assert.Equal(string.Empty, image.GetProperty("previewDataUrl").GetString());
+
+            var fileName = image.GetProperty("fileName").GetString();
+            Assert.False(string.IsNullOrWhiteSpace(fileName));
+
+            var imagePath = Path.Combine(gonfDirectory, "img", fileName!);
+            Assert.True(File.Exists(imagePath));
+        }
+        finally
+        {
+            if (Directory.Exists(gonfDirectory))
+            {
+                Directory.Delete(gonfDirectory, recursive: true);
+            }
+        }
+    }
+
         [Fact]
         public async Task PostSaveWithOutOfRangeItemValue_ReturnsBadRequestWithValidationMessage()
         {

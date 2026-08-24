@@ -1,5 +1,48 @@
-import { toNullableNumber } from './shared'
-import { ensureSecretStorageRoom, isSystemManagedRoom, roomNameById } from './rooms'
+import { API_BASE_URL, toNullableNumber } from './shared'
+import {
+  buildSavedRoomImageUrl,
+  createEmptyRoomImage,
+  generateRoomPreviewPngDataUrl,
+  normalizeRoomImageForState,
+  ensureSecretStorageRoom,
+  isSystemManagedRoom,
+  roomNameById,
+} from './rooms'
+
+const CHARACTER_IMAGE_JOB_POLL_DELAY_MS = 2000
+const CHARACTER_IMAGE_JOB_MAX_POLLS = 300
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
+
+function buildProviderError(payload, fallbackMessage) {
+  const error = payload?.errors?.[0]
+
+  return {
+    success: false,
+    errorCode: error?.code ?? payload?.data?.errorCode ?? 'IMAGE_GENERATION_FAILED',
+    errorMessage: error?.message ?? payload?.data?.errorMessage ?? fallbackMessage,
+  }
+}
+
+function buildProviderSuccess(payload) {
+  const previewDataUrl = payload?.data?.previewDataUrl
+  if (typeof previewDataUrl !== 'string' || !previewDataUrl.startsWith('data:image/')) {
+    return {
+      success: false,
+      errorCode: 'IMAGE_GENERATION_FAILED',
+      errorMessage: 'Image provider returned an invalid image payload.',
+    }
+  }
+
+  return {
+    success: true,
+    previewDataUrl,
+  }
+}
 
 export function createEmptyCharacterForm() {
   return {
@@ -12,7 +55,133 @@ export function createEmptyCharacterForm() {
   }
 }
 
-export function mapCharacterForState(rawCharacter, index) {
+export function createEmptyCharacterImage() {
+  return createEmptyRoomImage()
+}
+
+export function normalizeCharacterImageForState(rawImage) {
+  return normalizeRoomImageForState(rawImage)
+}
+
+export function createCharacterImageCandidate(character, attemptIndex) {
+  const generationSeed =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${attemptIndex}`
+  const placeholderPreview = generateRoomPreviewPngDataUrl(
+    character?.characterName ?? '',
+    character?.characterDescription ?? '',
+    generationSeed,
+    attemptIndex,
+  )
+
+  return {
+    imageStatus: 'generating',
+    attemptIndex,
+    generationSeed,
+    generatedUtc: new Date().toISOString(),
+    finalizedUtc: null,
+    fileName: '',
+    relativePath: '',
+    previewDataUrl: placeholderPreview,
+  }
+}
+
+export function finalizeCharacterImageState(character) {
+  const currentImage = normalizeCharacterImageForState(character.image)
+  if (!currentImage.previewDataUrl) {
+    return currentImage
+  }
+
+  return {
+    ...currentImage,
+    imageStatus: 'finalized',
+    finalizedUtc: new Date().toISOString(),
+  }
+}
+
+async function pollProviderCharacterImageJob(jobId) {
+  for (let attempt = 0; attempt < CHARACTER_IMAGE_JOB_MAX_POLLS; attempt += 1) {
+    const response = await fetch(`${API_BASE_URL}/api/character-image/generate-jobs/${encodeURIComponent(jobId)}`)
+    const payload = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      return buildProviderError(payload, 'Image generation failed.')
+    }
+
+    const status = String(payload?.data?.status ?? '')
+    if (status === 'completed') {
+      return buildProviderSuccess(payload)
+    }
+
+    if (status === 'failed') {
+      return buildProviderError(payload, 'Image generation failed.')
+    }
+
+    if (status !== 'queued' && status !== 'processing') {
+      return {
+        success: false,
+        errorCode: 'IMAGE_GENERATION_FAILED',
+        errorMessage: 'Image generation returned an invalid job status.',
+      }
+    }
+
+    await delay(CHARACTER_IMAGE_JOB_POLL_DELAY_MS)
+  }
+
+  return {
+    success: false,
+    errorCode: 'IMAGE_GENERATION_TIMEOUT',
+    errorMessage: 'Image generation is still running. Please try again shortly.',
+  }
+}
+
+export async function requestProviderCharacterImage(gonfName, character, imageState) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/character-image/generate-jobs`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        gonfName: gonfName.trim() || null,
+        characterId: character.characterId ?? null,
+        characterName: character.characterName,
+        characterDescription: character.characterDescription,
+        attemptIndex: imageState.attemptIndex,
+        generationSeed: imageState.generationSeed,
+      }),
+    })
+
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      return buildProviderError(payload, 'Image generation failed.')
+    }
+
+    if (typeof payload?.data?.previewDataUrl === 'string') {
+      return buildProviderSuccess(payload)
+    }
+
+    const jobId = payload?.data?.jobId
+    if (typeof jobId !== 'string' || jobId.length === 0) {
+      return {
+        success: false,
+        errorCode: 'IMAGE_GENERATION_FAILED',
+        errorMessage: 'Image generation job could not be started.',
+      }
+    }
+
+    return await pollProviderCharacterImageJob(jobId)
+  } catch {
+    return {
+      success: false,
+      errorCode: 'IMAGE_GENERATION_FAILED',
+      errorMessage: 'Could not reach the image provider.',
+    }
+  }
+}
+
+export function mapCharacterForState(rawCharacter, index, gonfName = '') {
   if (!rawCharacter || typeof rawCharacter !== 'object') {
     return null
   }
@@ -35,6 +204,23 @@ export function mapCharacterForState(rawCharacter, index) {
     })
     .filter(Boolean)
 
+  const normalizedImage = normalizeCharacterImageForState(rawCharacter.image)
+  const fallbackGeneratingPreview =
+    normalizedImage.imageStatus === 'generating' && !normalizedImage.previewDataUrl
+      ? generateRoomPreviewPngDataUrl(
+          String(rawCharacter.characterName ?? rawCharacter.name ?? ''),
+          String(rawCharacter.description ?? rawCharacter.characterDescription ?? ''),
+          normalizedImage.generationSeed,
+          normalizedImage.attemptIndex,
+        )
+      : ''
+  const resolvedImagePreview =
+    normalizedImage.previewDataUrl ||
+    fallbackGeneratingPreview ||
+    (normalizedImage.imageStatus === 'finalized'
+      ? buildSavedRoomImageUrl(gonfName, normalizedImage)
+      : '')
+
   return {
     characterId: Number(rawCharacter.characterId ?? rawCharacter.id ?? index + 1),
     characterName: String(rawCharacter.characterName ?? rawCharacter.name ?? ''),
@@ -42,6 +228,10 @@ export function mapCharacterForState(rawCharacter, index) {
     characterLocation: characterLocation === null || characterLocation === undefined ? '' : String(characterLocation),
     characterWanderer: Boolean(rawCharacter.wanderer ?? false),
     characterContains,
+    image: {
+      ...normalizedImage,
+      previewDataUrl: resolvedImagePreview,
+    },
   }
 }
 
@@ -123,6 +313,9 @@ export function buildCharacterSaveResult({
 
   const editingCharacterId = toNullableNumber(characterForm.characterId)
   const nextCharacterId = editingCharacterId ?? (Math.max(0, ...currentCharacters.map((character) => character.characterId)) + 1)
+  const existingCharacter = editingCharacterId === null
+    ? null
+    : currentCharacters.find((character) => character.characterId === nextCharacterId)
 
   const savedCharacter = {
     characterId: nextCharacterId,
@@ -131,6 +324,7 @@ export function buildCharacterSaveResult({
     characterLocation: String(characterLocationId),
     characterWanderer: Boolean(characterForm.characterWanderer),
     characterContains: selectedContains,
+    image: existingCharacter?.image ?? createEmptyCharacterImage(),
   }
 
   const normalizedCharacters = currentCharacters.map((character) => ({
