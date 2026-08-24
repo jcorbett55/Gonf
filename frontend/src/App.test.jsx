@@ -328,7 +328,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save Room' }))
 
     expect(screen.queryByText(/cannot be created manually/i)).not.toBeInTheDocument()
-    expect(screen.getByText(/Saved room Secret Storage and generated a room image candidate/i)).toBeInTheDocument()
+    expect(screen.getByText(/Saved room Secret Storage\. Use Upload Image or Generate Image to add a picture\./i)).toBeInTheDocument()
   })
 
   it('loads a gonf file with malformed entries without blanking the UI', async () => {
@@ -470,11 +470,13 @@ describe('App', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Save Room' }))
 
-      expect(screen.getByText(/generated a room image candidate/i)).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Generate image for Study' }))
+
+      expect(screen.getByText(/generated a new room image candidate for Study/i)).toBeInTheDocument()
       expect(await screen.findByRole('img', { name: /generated room preview for study/i })).toBeInTheDocument()
 
-      fireEvent.click(screen.getByRole('button', { name: 'Retry image for Study' }))
-      expect(screen.getByText(/new room image candidate for Study/i)).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Generate image for Study' }))
+      expect(screen.getByText(/generated a new room image candidate for Study/i)).toBeInTheDocument()
 
       fireEvent.click(screen.getByRole('button', { name: 'Save Gonf' }))
 
@@ -540,15 +542,17 @@ describe('App', () => {
       fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Keen-eyed scout.' } })
       fireEvent.click(screen.getByRole('button', { name: 'Save Character' }))
 
-      expect(screen.getByText(/generated a character image candidate/i)).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Generate image for Ava' }))
+
+      expect(screen.getByText(/generated a new character image candidate for Ava/i)).toBeInTheDocument()
 
       fireEvent.click(screen.getByRole('tab', { name: 'Floor -5' }))
       fireEvent.click(screen.getByRole('button', { name: 'View characters found in Secret Storage' }))
 
       expect(await screen.findByRole('img', { name: /generated character preview for ava/i })).toBeInTheDocument()
 
-      fireEvent.click(screen.getByRole('button', { name: 'Retry image for Ava' }))
-      expect(screen.getByText(/new character image candidate for Ava/i)).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Generate image for Ava' }))
+      expect(screen.getByText(/generated a new character image candidate for Ava/i)).toBeInTheDocument()
 
       fireEvent.click(screen.getByRole('button', { name: 'Confirm image for Ava' }))
       expect(screen.getByText(/finalized the character image for Ava/i)).toBeInTheDocument()
