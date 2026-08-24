@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.IO;
 using System.Text;
@@ -84,6 +85,17 @@ public sealed class OpenAiImageProvider : IImageGenerationProvider
         {
             response = await _httpClient.PostAsJsonAsync(requestUri, payload, cancellationToken);
         }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "IMPS request timed out or was canceled by the upstream provider.");
+            return new ImageGenerationResult(
+                false,
+                null,
+                request.Model ?? defaultModel,
+                "IMAGE_GENERATION_TIMEOUT",
+                "Image generation is still running. Please try again shortly."
+            );
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "IMPS request failed.");
@@ -100,12 +112,24 @@ public sealed class OpenAiImageProvider : IImageGenerationProvider
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogWarning("IMPS returned status {StatusCode}. Body: {Body}", (int)response.StatusCode, body);
+
+            var parsedError = TryParseImpsError(body);
+            var errorCode = parsedError?.ErrorCode;
+            var errorMessage = parsedError?.ErrorMessage;
+
+            if (string.IsNullOrWhiteSpace(errorCode)
+                && (response.StatusCode == HttpStatusCode.RequestTimeout || response.StatusCode == HttpStatusCode.GatewayTimeout))
+            {
+                errorCode = "IMAGE_GENERATION_TIMEOUT";
+                errorMessage = "Image generation is still running. Please try again shortly.";
+            }
+
             return new ImageGenerationResult(
                 false,
                 null,
                 request.Model ?? defaultModel,
-                "IMAGE_GENERATION_FAILED",
-                "Image provider rejected the request."
+                errorCode ?? "IMAGE_GENERATION_FAILED",
+                errorMessage ?? "Image provider rejected the request."
             );
         }
 
@@ -116,12 +140,13 @@ public sealed class OpenAiImageProvider : IImageGenerationProvider
             var success = root.TryGetProperty("success", out var successElement) && successElement.GetBoolean();
             if (!success)
             {
+                var parsedError = TryParseImpsError(body);
                 return new ImageGenerationResult(
                     false,
                     null,
                     request.Model ?? defaultModel,
-                    "IMAGE_GENERATION_FAILED",
-                    "Image provider rejected the request."
+                    parsedError?.ErrorCode ?? "IMAGE_GENERATION_FAILED",
+                    parsedError?.ErrorMessage ?? "Image provider rejected the request."
                 );
             }
 
@@ -190,6 +215,60 @@ public sealed class OpenAiImageProvider : IImageGenerationProvider
     private static double ParseDouble(string? rawValue, double fallback)
     {
         return double.TryParse(rawValue, out var parsed) ? parsed : fallback;
+    }
+
+    private static (string ErrorCode, string ErrorMessage)? TryParseImpsError(string responseBody)
+    {
+        if (string.IsNullOrWhiteSpace(responseBody))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(responseBody);
+            var root = document.RootElement;
+
+            if (root.TryGetProperty("errors", out var errors)
+                && errors.ValueKind == JsonValueKind.Array
+                && errors.GetArrayLength() > 0)
+            {
+                var firstError = errors[0];
+                var code = firstError.TryGetProperty("code", out var codeElement)
+                    ? codeElement.GetString()
+                    : null;
+                var message = firstError.TryGetProperty("message", out var messageElement)
+                    ? messageElement.GetString()
+                    : null;
+
+                if (!string.IsNullOrWhiteSpace(code) || !string.IsNullOrWhiteSpace(message))
+                {
+                    return (code ?? "IMAGE_GENERATION_FAILED", message ?? "Image provider rejected the request.");
+                }
+            }
+
+            if (root.TryGetProperty("data", out var data)
+                && data.ValueKind == JsonValueKind.Object)
+            {
+                var code = data.TryGetProperty("errorCode", out var codeElement)
+                    ? codeElement.GetString()
+                    : null;
+                var message = data.TryGetProperty("errorMessage", out var messageElement)
+                    ? messageElement.GetString()
+                    : null;
+
+                if (!string.IsNullOrWhiteSpace(code) || !string.IsNullOrWhiteSpace(message))
+                {
+                    return (code ?? "IMAGE_GENERATION_FAILED", message ?? "Image provider rejected the request.");
+                }
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
 
@@ -340,7 +419,7 @@ public sealed class RoomImageGenerationJobService : BackgroundService, IRoomImag
         var imageDirectory = Path.Combine(gonfDirectory, "img");
         Directory.CreateDirectory(imageDirectory);
 
-        var fileName = BuildRoomImageFileName(job.RoomId.Value, job.RoomName, Math.Max(0, job.AttemptIndex));
+        var fileName = BuildRoomImageFileName(job.RoomId.Value, job.RoomName, Math.Max(0, job.AttemptIndex), ImageUploadValidation.GetExtensionFromDataUrl(previewDataUrl));
         var filePath = Path.Combine(imageDirectory, fileName);
         var relativePath = $"img/{fileName}";
 
@@ -401,7 +480,7 @@ public sealed class RoomImageGenerationJobService : BackgroundService, IRoomImag
         }
     }
 
-    private static string BuildRoomImageFileName(int roomId, string roomName, int attemptIndex)
+    private static string BuildRoomImageFileName(int roomId, string roomName, int attemptIndex, string extension = ".png")
     {
         var safeSlugChars = roomName
             .ToLowerInvariant()
@@ -419,7 +498,7 @@ public sealed class RoomImageGenerationJobService : BackgroundService, IRoomImag
             slug = "room";
         }
 
-        return $"r{roomId:D4}_{slug}_{attemptIndex:D2}.png";
+        return $"r{roomId:D4}_{slug}_{attemptIndex:D2}{extension}";
     }
 
     private static byte[] DecodeDataUrl(string value)
@@ -447,6 +526,277 @@ public sealed class RoomImageGenerationJobService : BackgroundService, IRoomImag
     }
 
     private void UpdateSnapshot(string jobId, Func<RoomImageGenerationJobSnapshot, RoomImageGenerationJobSnapshot> update)
+    {
+        while (true)
+        {
+            if (!_snapshots.TryGetValue(jobId, out var snapshot))
+            {
+                return;
+            }
+
+            var next = update(snapshot);
+            if (_snapshots.TryUpdate(jobId, next, snapshot))
+            {
+                return;
+            }
+        }
+    }
+}
+
+public interface ICharacterImageGenerationJobService
+{
+    Task<CharacterImageGenerationJobSnapshot> QueueAsync(GenerateCharacterImageRequest request, string prompt, CancellationToken cancellationToken);
+    bool TryGet(string jobId, out CharacterImageGenerationJobSnapshot snapshot);
+}
+
+public static class CharacterImageGenerationJobStatuses
+{
+    public const string Queued = "queued";
+    public const string Processing = "processing";
+    public const string Completed = "completed";
+    public const string Failed = "failed";
+}
+
+public sealed record CharacterImageGenerationJobSnapshot(
+    string JobId,
+    string Status,
+    int AttemptIndex,
+    string GenerationSeed,
+    string? PreviewDataUrl,
+    string? Model,
+    string? ErrorCode,
+    string? ErrorMessage,
+    DateTimeOffset CreatedUtc,
+    DateTimeOffset? CompletedUtc);
+
+internal sealed record QueuedCharacterImageGenerationJob(
+    string JobId,
+    string Prompt,
+    string? GonfName,
+    int? CharacterId,
+    string CharacterName,
+    int AttemptIndex,
+    string GenerationSeed);
+
+public sealed class CharacterImageGenerationJobService : BackgroundService, ICharacterImageGenerationJobService
+{
+    private readonly Channel<QueuedCharacterImageGenerationJob> _jobs = Channel.CreateUnbounded<QueuedCharacterImageGenerationJob>();
+    private readonly ConcurrentDictionary<string, CharacterImageGenerationJobSnapshot> _snapshots = new(StringComparer.Ordinal);
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<CharacterImageGenerationJobService> _logger;
+
+    public CharacterImageGenerationJobService(IServiceScopeFactory scopeFactory, ILogger<CharacterImageGenerationJobService> logger)
+    {
+        _scopeFactory = scopeFactory;
+        _logger = logger;
+    }
+
+    public async Task<CharacterImageGenerationJobSnapshot> QueueAsync(GenerateCharacterImageRequest request, string prompt, CancellationToken cancellationToken)
+    {
+        var snapshot = new CharacterImageGenerationJobSnapshot(
+            Guid.NewGuid().ToString("n"),
+            CharacterImageGenerationJobStatuses.Queued,
+            request.AttemptIndex,
+            request.GenerationSeed ?? string.Empty,
+            null,
+            null,
+            null,
+            null,
+            DateTimeOffset.UtcNow,
+            null);
+
+        _snapshots[snapshot.JobId] = snapshot;
+
+        await _jobs.Writer.WriteAsync(
+            new QueuedCharacterImageGenerationJob(snapshot.JobId, prompt, request.GonfName, request.CharacterId, request.CharacterName, snapshot.AttemptIndex, snapshot.GenerationSeed),
+            cancellationToken);
+
+        return snapshot;
+    }
+
+    public bool TryGet(string jobId, out CharacterImageGenerationJobSnapshot snapshot)
+    {
+        return _snapshots.TryGetValue(jobId, out snapshot!);
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        await foreach (var job in _jobs.Reader.ReadAllAsync(stoppingToken))
+        {
+            try
+            {
+                await ProcessJobAsync(job, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unhandled exception while processing character image generation job {JobId}.", job.JobId);
+                UpdateSnapshot(job.JobId, snapshot => snapshot with
+                {
+                    Status = CharacterImageGenerationJobStatuses.Failed,
+                    ErrorCode = "IMAGE_GENERATION_FAILED",
+                    ErrorMessage = "Image generation failed.",
+                    CompletedUtc = DateTimeOffset.UtcNow,
+                });
+            }
+        }
+    }
+
+    private async Task ProcessJobAsync(QueuedCharacterImageGenerationJob job, CancellationToken cancellationToken)
+    {
+        UpdateSnapshot(job.JobId, snapshot => snapshot with { Status = CharacterImageGenerationJobStatuses.Processing });
+
+        using var scope = _scopeFactory.CreateScope();
+        var provider = scope.ServiceProvider.GetRequiredService<IImageGenerationProvider>();
+        var result = await provider.GenerateAsync(new GenerateImageRequest(job.Prompt), cancellationToken);
+
+        if (!result.Success)
+        {
+            UpdateSnapshot(job.JobId, snapshot => snapshot with
+            {
+                Status = CharacterImageGenerationJobStatuses.Failed,
+                Model = result.Model,
+                ErrorCode = result.ErrorCode ?? "IMAGE_GENERATION_FAILED",
+                ErrorMessage = result.ErrorMessage ?? "Image generation failed.",
+                CompletedUtc = DateTimeOffset.UtcNow,
+            });
+
+            return;
+        }
+
+        UpdateSnapshot(job.JobId, snapshot => snapshot with
+        {
+            Status = CharacterImageGenerationJobStatuses.Completed,
+            PreviewDataUrl = result.PreviewDataUrl,
+            Model = result.Model,
+            CompletedUtc = DateTimeOffset.UtcNow,
+        });
+
+        await PersistCompletedImageAsync(job, result.PreviewDataUrl, cancellationToken);
+    }
+
+    private async Task PersistCompletedImageAsync(QueuedCharacterImageGenerationJob job, string? previewDataUrl, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(previewDataUrl) || string.IsNullOrWhiteSpace(job.GonfName) || job.CharacterId is null)
+        {
+            return;
+        }
+
+        var gonfName = job.GonfName.Trim();
+        var gonfDirectory = Path.Combine("C:\\gonf\\", gonfName);
+        var imageDirectory = Path.Combine(gonfDirectory, "img");
+        Directory.CreateDirectory(imageDirectory);
+
+        var fileName = BuildCharacterImageFileName(job.CharacterId.Value, job.CharacterName, Math.Max(0, job.AttemptIndex), ImageUploadValidation.GetExtensionFromDataUrl(previewDataUrl));
+        var filePath = Path.Combine(imageDirectory, fileName);
+        var relativePath = $"img/{fileName}";
+
+        var bytes = DecodeDataUrl(previewDataUrl);
+        await File.WriteAllBytesAsync(filePath, bytes, cancellationToken);
+
+        var gonfPath = Path.Combine(gonfDirectory, $"{gonfName}.json");
+        if (!File.Exists(gonfPath))
+        {
+            return;
+        }
+
+        var root = JsonNode.Parse(await File.ReadAllTextAsync(gonfPath, cancellationToken))?.AsObject();
+        var characters = root?["characters"]?.AsArray();
+        if (characters is null)
+        {
+            return;
+        }
+
+        foreach (var characterNode in characters)
+        {
+            var character = characterNode?.AsObject();
+            if (character is null)
+            {
+                continue;
+            }
+
+            var characterId = character["characterId"]?.GetValue<int?>();
+            if (characterId != job.CharacterId)
+            {
+                continue;
+            }
+
+            var currentImage = character["image"]?.AsObject();
+            var currentGenerationSeed = currentImage?["generationSeed"]?.GetValue<string?>() ?? string.Empty;
+            var currentAttemptIndex = currentImage?["attemptIndex"]?.GetValue<int?>() ?? 0;
+
+            if (!string.Equals(currentGenerationSeed, job.GenerationSeed, StringComparison.Ordinal) || currentAttemptIndex != Math.Max(0, job.AttemptIndex))
+            {
+                return;
+            }
+
+            character["image"] = new JsonObject
+            {
+                ["imageStatus"] = "finalized",
+                ["attemptIndex"] = Math.Max(0, job.AttemptIndex),
+                ["generationSeed"] = job.GenerationSeed,
+                ["generatedUtc"] = DateTimeOffset.UtcNow,
+                ["finalizedUtc"] = DateTimeOffset.UtcNow,
+                ["fileName"] = fileName,
+                ["relativePath"] = relativePath,
+                ["previewDataUrl"] = string.Empty,
+            };
+
+            var json = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(gonfPath, json, cancellationToken);
+            return;
+        }
+    }
+
+    private static string BuildCharacterImageFileName(int characterId, string characterName, int attemptIndex, string extension = ".png")
+    {
+        var safeSlugChars = characterName
+            .ToLowerInvariant()
+            .Select(character => char.IsLetterOrDigit(character) ? character : '-')
+            .ToArray();
+
+        var slug = new string(safeSlugChars).Trim('-');
+        while (slug.Contains("--", StringComparison.Ordinal))
+        {
+            slug = slug.Replace("--", "-", StringComparison.Ordinal);
+        }
+
+        if (string.IsNullOrWhiteSpace(slug))
+        {
+            slug = "character";
+        }
+
+        return $"c{characterId:D4}_{slug}_{attemptIndex:D2}{extension}";
+    }
+
+    private static byte[] DecodeDataUrl(string value)
+    {
+        if (!value.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            return Convert.FromBase64String(value);
+        }
+
+        var commaIndex = value.IndexOf(',');
+        if (commaIndex < 0)
+        {
+            throw new FormatException("Invalid data URL format.");
+        }
+
+        var metadata = value[..commaIndex];
+        var payload = value[(commaIndex + 1)..];
+
+        if (metadata.EndsWith(";base64", StringComparison.OrdinalIgnoreCase))
+        {
+            return Convert.FromBase64String(payload);
+        }
+
+        return Encoding.UTF8.GetBytes(Uri.UnescapeDataString(payload));
+    }
+
+    private void UpdateSnapshot(string jobId, Func<CharacterImageGenerationJobSnapshot, CharacterImageGenerationJobSnapshot> update)
     {
         while (true)
         {

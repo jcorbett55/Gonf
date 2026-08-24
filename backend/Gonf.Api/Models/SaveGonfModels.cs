@@ -27,7 +27,8 @@ public sealed record SaveGonfItemRequest(
     bool CanHoldItems,
     bool CanBeCarried,
     int? Location,
-    IReadOnlyList<int> Contents
+    IReadOnlyList<int> Contents,
+    SaveGonfItemImageRequest? Image = null
 );
 
 public sealed record SaveGonfCharacterRequest(
@@ -36,10 +37,33 @@ public sealed record SaveGonfCharacterRequest(
     string Description,
     int? Location,
     bool Wanderer,
-    IReadOnlyList<int> Contains
+    IReadOnlyList<int> Contains,
+    SaveGonfCharacterImageRequest? Image = null
 );
 
 public sealed record SaveGonfRoomImageRequest(
+    string? ImageStatus,
+    int? AttemptIndex,
+    string? GenerationSeed,
+    DateTimeOffset? GeneratedUtc,
+    DateTimeOffset? FinalizedUtc,
+    string? FileName,
+    string? RelativePath,
+    string? PreviewDataUrl
+);
+
+public sealed record SaveGonfCharacterImageRequest(
+    string? ImageStatus,
+    int? AttemptIndex,
+    string? GenerationSeed,
+    DateTimeOffset? GeneratedUtc,
+    DateTimeOffset? FinalizedUtc,
+    string? FileName,
+    string? RelativePath,
+    string? PreviewDataUrl
+);
+
+public sealed record SaveGonfItemImageRequest(
     string? ImageStatus,
     int? AttemptIndex,
     string? GenerationSeed,

@@ -9,6 +9,24 @@ public sealed record GenerateRoomImageRequest(
     string? GenerationSeed = null
 );
 
+public sealed record GenerateCharacterImageRequest(
+    string? GonfName,
+    int? CharacterId,
+    string CharacterName,
+    string CharacterDescription,
+    int AttemptIndex,
+    string? GenerationSeed = null
+);
+
+public sealed record GenerateItemImageRequest(
+    string? GonfName,
+    int? ItemId,
+    string ItemName,
+    string ItemDescription,
+    int AttemptIndex,
+    string? GenerationSeed = null
+);
+
 public sealed record GenerateImageRequest(
     string Prompt,
     string? Model = null,
