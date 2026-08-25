@@ -133,8 +133,10 @@ describe('App', () => {
       const requestBody = JSON.parse(fetchSpy.mock.calls[0][1].body)
       expect(requestBody.items).toHaveLength(1)
       expect(requestBody.items[0].itemName).toBe('Loose Key')
+      expect(requestBody.items[0].image.source).toBe('generated')
       expect(requestBody.characters).toHaveLength(1)
       expect(requestBody.characters[0].characterName).toBe('Ava')
+      expect(requestBody.characters[0].image.source).toBe('generated')
     } finally {
       fetchSpy.mockRestore()
     }

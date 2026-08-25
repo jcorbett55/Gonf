@@ -49,7 +49,8 @@ public sealed record SaveGonfRoomImageRequest(
     DateTimeOffset? FinalizedUtc,
     string? FileName,
     string? RelativePath,
-    string? PreviewDataUrl
+    string? PreviewDataUrl,
+    string? Source = null
 );
 
 public sealed record SaveGonfCharacterImageRequest(
@@ -60,7 +61,8 @@ public sealed record SaveGonfCharacterImageRequest(
     DateTimeOffset? FinalizedUtc,
     string? FileName,
     string? RelativePath,
-    string? PreviewDataUrl
+    string? PreviewDataUrl,
+    string? Source = null
 );
 
 public sealed record SaveGonfItemImageRequest(
@@ -71,5 +73,6 @@ public sealed record SaveGonfItemImageRequest(
     DateTimeOffset? FinalizedUtc,
     string? FileName,
     string? RelativePath,
-    string? PreviewDataUrl
+    string? PreviewDataUrl,
+    string? Source = null
 );

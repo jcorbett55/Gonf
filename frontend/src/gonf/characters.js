@@ -84,6 +84,7 @@ export function createCharacterImageCandidate(character, attemptIndex) {
     fileName: '',
     relativePath: '',
     previewDataUrl: placeholderPreview,
+    source: 'generated',
   }
 }
 

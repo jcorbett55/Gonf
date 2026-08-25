@@ -70,6 +70,7 @@ export function createItemImageCandidate(item, attemptIndex) {
     fileName: '',
     relativePath: '',
     previewDataUrl: placeholderPreview,
+    source: 'generated',
   }
 }
 

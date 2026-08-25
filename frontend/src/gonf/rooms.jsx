@@ -25,6 +25,7 @@ export function createEmptyRoomImage() {
     fileName: '',
     relativePath: '',
     previewDataUrl: '',
+    source: 'generated',
   }
 }
 
@@ -42,6 +43,7 @@ export function normalizeRoomImageForState(rawImage) {
     fileName: String(rawImage.fileName ?? ''),
     relativePath: String(rawImage.relativePath ?? ''),
     previewDataUrl: String(rawImage.previewDataUrl ?? ''),
+    source: String(rawImage.source ?? 'generated'),
   }
 }
 
@@ -207,6 +209,7 @@ export function createRoomImageCandidate(room, attemptIndex) {
     fileName: '',
     relativePath: '',
     previewDataUrl: placeholderPreview,
+    source: 'generated',
   }
 }
 

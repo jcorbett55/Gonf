@@ -821,6 +821,7 @@ static async Task<object?> PersistRoomImageAsync(SaveGonfRoomRequest room, strin
     var hasPreview = !string.IsNullOrWhiteSpace(sourceImage.PreviewDataUrl);
     var attemptIndex = Math.Max(0, sourceImage.AttemptIndex ?? 0);
     var generatedUtc = sourceImage.GeneratedUtc ?? DateTimeOffset.UtcNow;
+    var imageSource = string.IsNullOrWhiteSpace(sourceImage.Source) ? "generated" : sourceImage.Source;
 
     if (!hasPreview && string.IsNullOrWhiteSpace(sourceImage.RelativePath))
     {
@@ -834,6 +835,7 @@ static async Task<object?> PersistRoomImageAsync(SaveGonfRoomRequest room, strin
             fileName = sourceImage.FileName ?? string.Empty,
             relativePath = sourceImage.RelativePath ?? string.Empty,
             previewDataUrl = string.Empty,
+            source = imageSource,
         };
     }
 
@@ -861,6 +863,7 @@ static async Task<object?> PersistRoomImageAsync(SaveGonfRoomRequest room, strin
         fileName,
         relativePath,
         previewDataUrl = string.Empty,
+        source = imageSource,
     };
 }
 
@@ -875,6 +878,7 @@ static async Task<object?> PersistCharacterImageAsync(SaveGonfCharacterRequest c
     var hasPreview = !string.IsNullOrWhiteSpace(sourceImage.PreviewDataUrl);
     var attemptIndex = Math.Max(0, sourceImage.AttemptIndex ?? 0);
     var generatedUtc = sourceImage.GeneratedUtc ?? DateTimeOffset.UtcNow;
+    var imageSource = string.IsNullOrWhiteSpace(sourceImage.Source) ? "generated" : sourceImage.Source;
 
     if (!hasPreview && string.IsNullOrWhiteSpace(sourceImage.RelativePath))
     {
@@ -888,6 +892,7 @@ static async Task<object?> PersistCharacterImageAsync(SaveGonfCharacterRequest c
             fileName = sourceImage.FileName ?? string.Empty,
             relativePath = sourceImage.RelativePath ?? string.Empty,
             previewDataUrl = string.Empty,
+            source = imageSource,
         };
     }
 
@@ -915,6 +920,7 @@ static async Task<object?> PersistCharacterImageAsync(SaveGonfCharacterRequest c
         fileName,
         relativePath,
         previewDataUrl = string.Empty,
+        source = imageSource,
     };
 }
 
@@ -929,6 +935,7 @@ static async Task<object?> PersistItemImageAsync(SaveGonfItemRequest item, strin
     var hasPreview = !string.IsNullOrWhiteSpace(sourceImage.PreviewDataUrl);
     var attemptIndex = Math.Max(0, sourceImage.AttemptIndex ?? 0);
     var generatedUtc = sourceImage.GeneratedUtc ?? DateTimeOffset.UtcNow;
+    var imageSource = string.IsNullOrWhiteSpace(sourceImage.Source) ? "generated" : sourceImage.Source;
 
     if (!hasPreview && string.IsNullOrWhiteSpace(sourceImage.RelativePath))
     {
@@ -942,6 +949,7 @@ static async Task<object?> PersistItemImageAsync(SaveGonfItemRequest item, strin
             fileName = sourceImage.FileName ?? string.Empty,
             relativePath = sourceImage.RelativePath ?? string.Empty,
             previewDataUrl = string.Empty,
+            source = imageSource,
         };
     }
 
@@ -969,6 +977,7 @@ static async Task<object?> PersistItemImageAsync(SaveGonfItemRequest item, strin
         fileName,
         relativePath,
         previewDataUrl = string.Empty,
+        source = imageSource,
     };
 }
 

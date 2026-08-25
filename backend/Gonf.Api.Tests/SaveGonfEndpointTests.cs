@@ -177,6 +177,74 @@ public class SaveGonfEndpointTests : IClassFixture<WebApplicationFactory<Program
         }
     }
 
+    [Theory]
+    [InlineData(null, "generated")]
+    [InlineData("uploaded", "uploaded")]
+    [InlineData("generated", "generated")]
+    public async Task PostSaveWithRoomImage_PersistsSourceDiscriminatorWithBackwardCompatibleDefault(string? requestedSource, string expectedSource)
+    {
+        using var client = _factory.CreateClient();
+        var gonfName = $"ImgSrc_{Guid.NewGuid():N}";
+        var gonfDirectory = Path.Combine(@"C:\gonf\\", gonfName);
+        var savePath = Path.Combine(gonfDirectory, $"{gonfName}.json");
+
+        if (Directory.Exists(gonfDirectory))
+        {
+            Directory.Delete(gonfDirectory, recursive: true);
+        }
+
+        var request = new
+        {
+            gonfName,
+            rooms = new[]
+            {
+                new
+                {
+                    roomId = 7,
+                    roomName = "Kitchen",
+                    roomDescription = "A warm kitchen.",
+                    roomFloor = 1,
+                    image = new
+                    {
+                        imageStatus = "candidate-ready",
+                        attemptIndex = 0,
+                        generationSeed = "seed-source",
+                        generatedUtc = DateTimeOffset.UtcNow,
+                        finalizedUtc = (DateTimeOffset?)null,
+                        fileName = "",
+                        relativePath = "",
+                        previewDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jfXcAAAAASUVORK5CYII=",
+                        source = requestedSource,
+                    },
+                    exits = new { north = (int?)null, east = (int?)null, south = (int?)null, west = (int?)null, up = (int?)null, down = (int?)null }
+                }
+            },
+            items = Array.Empty<object>(),
+            characters = Array.Empty<object>()
+        };
+
+        try
+        {
+            var response = await client.PostAsJsonAsync("/api/gonf/save", request);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.True(File.Exists(savePath));
+
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(savePath));
+            var room = document.RootElement.GetProperty("rooms").EnumerateArray().Single();
+            var image = room.GetProperty("image");
+
+            Assert.Equal(expectedSource, image.GetProperty("source").GetString());
+        }
+        finally
+        {
+            if (Directory.Exists(gonfDirectory))
+            {
+                Directory.Delete(gonfDirectory, recursive: true);
+            }
+        }
+    }
+
     [Fact]
     public async Task PostSaveWithCharacterImage_PersistsImageMetadataAndImageFile()
     {
