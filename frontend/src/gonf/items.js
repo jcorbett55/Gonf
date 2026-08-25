@@ -1,5 +1,6 @@
 import { API_BASE_URL, DOTNET_DECIMAL_MAX, toNullableNumber } from './shared'
 import {
+  buildSavedRoomImageUrl,
   createEmptyRoomImage,
   generateRoomPreviewPngDataUrl,
   normalizeRoomImageForState,
@@ -191,7 +192,7 @@ export function normalizeOptionalNumericForState(rawValue) {
   return Number.isFinite(numericValue) ? numericValue : ''
 }
 
-export function mapItemForState(rawItem, index) {
+export function mapItemForState(rawItem, index, gonfName = '') {
   if (!rawItem || typeof rawItem !== 'object') {
     return null
   }
@@ -214,6 +215,21 @@ export function mapItemForState(rawItem, index) {
     })
     .filter(Boolean)
 
+  const normalizedImage = normalizeItemImageForState(rawItem.image)
+  const fallbackGeneratingPreview =
+    normalizedImage.imageStatus === 'generating' && !normalizedImage.previewDataUrl
+      ? generateRoomPreviewPngDataUrl(
+          String(rawItem.itemName ?? rawItem.name ?? ''),
+          String(rawItem.itemDescription ?? rawItem.description ?? ''),
+          normalizedImage.generationSeed,
+          normalizedImage.attemptIndex,
+        )
+      : ''
+  const resolvedImagePreview =
+    normalizedImage.previewDataUrl ||
+    fallbackGeneratingPreview ||
+    (normalizedImage.imageStatus === 'finalized' ? buildSavedRoomImageUrl(gonfName, normalizedImage) : '')
+
   return {
     itemId: Number(rawItem.itemId ?? rawItem.id ?? index + 1),
     itemName: String(rawItem.itemName ?? rawItem.name ?? ''),
@@ -224,7 +240,10 @@ export function mapItemForState(rawItem, index) {
     canBeCarried: Boolean(rawItem.canBeCarried ?? rawItem.canCarry ?? false),
     itemLocation: itemLocation === null || itemLocation === undefined ? '' : String(itemLocation),
     itemContents,
-    image: normalizeItemImageForState(rawItem.image),
+    image: {
+      ...normalizedImage,
+      previewDataUrl: resolvedImagePreview,
+    },
   }
 }
 
