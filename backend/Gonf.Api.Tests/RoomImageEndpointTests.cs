@@ -91,4 +91,69 @@ public class RoomImageEndpointTests : IClassFixture<WebApplicationFactory<Progra
         Assert.True(payload.GetProperty("success").GetBoolean());
         Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("data").GetProperty("jobId").GetString()));
     }
+
+    [Fact]
+    public async Task UploadCharacterImage_WithJpegFile_ReturnsBadRequest()
+    {
+        using var client = _factory.CreateClient();
+
+        using var content = new MultipartFormDataContent();
+        var fileBytes = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 };
+        var fileContent = new ByteArrayContent(fileBytes);
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
+        content.Add(fileContent, "file", "character.jpeg");
+        content.Add(new StringContent("0"), "attemptIndex");
+        content.Add(new StringContent("seed-character-upload"), "generationSeed");
+
+        var response = await client.PostAsync("/api/character-image/upload", content);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(payload.GetProperty("success").GetBoolean());
+        Assert.Equal("INVALID_FILE_TYPE", payload.GetProperty("errors")[0].GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task UploadCharacterImage_WithPngFile_ReturnsSuccess()
+    {
+        using var client = _factory.CreateClient();
+
+        using var content = new MultipartFormDataContent();
+        var fileBytes = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+        var fileContent = new ByteArrayContent(fileBytes);
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+        content.Add(fileContent, "file", "character.png");
+        content.Add(new StringContent("0"), "attemptIndex");
+        content.Add(new StringContent("seed-character-upload"), "generationSeed");
+
+        var response = await client.PostAsync("/api/character-image/upload", content);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(payload.GetProperty("success").GetBoolean());
+        Assert.Equal("uploaded", payload.GetProperty("data").GetProperty("source").GetString());
+    }
+
+    [Fact]
+    public async Task UploadRoomImage_WithJpegFile_ReturnsSuccess()
+    {
+        using var client = _factory.CreateClient();
+
+        using var content = new MultipartFormDataContent();
+        var fileBytes = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 };
+        var fileContent = new ByteArrayContent(fileBytes);
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
+        content.Add(fileContent, "file", "room.jpeg");
+        content.Add(new StringContent("0"), "attemptIndex");
+        content.Add(new StringContent("seed-room-upload"), "generationSeed");
+
+        var response = await client.PostAsync("/api/room-image/upload", content);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(payload.GetProperty("success").GetBoolean());
+    }
 }

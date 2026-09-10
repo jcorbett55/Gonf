@@ -599,12 +599,73 @@ th {
   pointer-events: none;
 }
 
+.gg-room-character-overlays {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-evenly;
+  gap: 0.4rem;
+  padding: 0 0.5rem 0.35rem;
+  pointer-events: none;
+}
+
+.gg-room-character-overlay-frame {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: min(32.2%, 6.58rem);
+  height: 70%;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.gg-room-character-overlay {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center bottom;
+  border-radius: 0;
+  border: none;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35));
+}
+
+
+.gg-room-character-overlay-more {
+  flex: 0 0 auto;
+  pointer-events: auto;
+  align-self: flex-end;
+  margin-bottom: 0.4rem;
+  min-width: 1.8rem;
+  height: 1.8rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  border: 1px solid #8fb2d6;
+  background: rgba(20, 34, 54, 0.82);
+  color: #f4f8ff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .gg-room-image-preview img {
   width: 100%;
   border-radius: 10px;
   border: 1px solid #cddaf0;
   max-height: 180px;
   object-fit: cover;
+}
+
+.gg-room-image-preview .gg-room-character-overlay {
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+  object-fit: cover;
+  object-position: center bottom;
 }
 
 .gg-room-image-empty {

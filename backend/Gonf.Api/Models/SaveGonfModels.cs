@@ -13,7 +13,8 @@ public sealed record SaveGonfRoomRequest(
     string RoomDescription,
     int RoomFloor,
     SaveGonfExitsRequest Exits,
-    SaveGonfRoomImageRequest? Image = null
+    SaveGonfRoomImageRequest? Image = null,
+    bool IsStartingRoom = false
 );
 
 public sealed record SaveGonfExitsRequest(int? North, int? East, int? South, int? West, int? Up, int? Down);

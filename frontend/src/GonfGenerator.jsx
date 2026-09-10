@@ -604,6 +604,7 @@ export default function GonfGenerator() {
         roomDescription: form.roomDescription.trim(),
         image: existingRoomForImage?.image ?? createEmptyRoomImage(),
         roomFloor,
+        isStartingRoom: Boolean(form.isStartingRoom),
         exits: {
           north: toNullableNumber(form.northExit),
           east: toNullableNumber(form.eastExit),
@@ -614,7 +615,11 @@ export default function GonfGenerator() {
         },
       }
 
-      const nextRooms = stripSecretStorageExits(applyReciprocalLinks(currentRooms, savedRoom))
+      const nextRooms = stripSecretStorageExits(applyReciprocalLinks(currentRooms, savedRoom)).map((room) =>
+        savedRoom.isStartingRoom && room.roomId !== savedRoom.roomId
+          ? { ...room, isStartingRoom: false }
+          : room,
+      )
 
       setSelectedRoomId(nextRoomId)
       setSelectedRoomPanelMode('room')
@@ -1112,6 +1117,7 @@ export default function GonfGenerator() {
         roomFloor: room.roomFloor,
         systemManagedRoomKey: room.systemManagedRoomKey ?? null,
         isSecretStorage: Boolean(room.isSecretStorage),
+        isStartingRoom: Boolean(room.isStartingRoom),
         image: {
           imageStatus: room.image?.imageStatus ?? 'none',
           attemptIndex: room.image?.attemptIndex ?? 0,
@@ -1346,6 +1352,15 @@ export default function GonfGenerator() {
                     </option>
                   ))}
                 </select>
+              </label>
+
+              <label className="gg-field gg-checkbox-field">
+                <span>Starting Room</span>
+                <input
+                  type="checkbox"
+                  checked={form.isStartingRoom}
+                  onChange={(event) => onFormChange('isStartingRoom', event.target.checked)}
+                />
               </label>
 
               <section className="gg-exit-compass" aria-label="Compass Exits">

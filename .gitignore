@@ -5,6 +5,10 @@
 # Node
 **/node_modules/
 frontend/dist/
+frontend-player/dist/
+
+# User-specific project files
+*.csproj.user
 
 # Logs
 *.log

@@ -1,4 +1,4 @@
-import { API_BASE_URL, toNullableNumber } from './shared'
+import { API_BASE_URL, toNullableNumber, isCharacterImageOverlayEligible } from './shared'
 import {
   buildSavedRoomImageUrl,
   createEmptyRoomImage,
@@ -87,6 +87,8 @@ export function createCharacterImageCandidate(character, attemptIndex) {
     source: 'generated',
   }
 }
+
+export { isCharacterImageOverlayEligible } from './shared'
 
 export function finalizeCharacterImageState(character) {
   const currentImage = normalizeCharacterImageForState(character.image)

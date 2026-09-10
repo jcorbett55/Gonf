@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Gonf.Api.Models;
+using Gonf.Api.Infrastructure;
 
 namespace Gonf.Api.Services;
 

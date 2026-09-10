@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
@@ -13,6 +14,122 @@ public class SaveGonfEndpointTests : IClassFixture<WebApplicationFactory<Program
     public SaveGonfEndpointTests(WebApplicationFactory<Program> factory)
     {
         _factory = factory;
+    }
+
+    [Fact]
+    public async Task PostSaveWithStartingRoomFlag_PersistsIsStartingRoom()
+    {
+        using var client = _factory.CreateClient();
+        var gonfName = $"Start_{Guid.NewGuid():N}";
+        var gonfDirectory = Path.Combine(@"C:\gonf\\", gonfName);
+        var savePath = Path.Combine(gonfDirectory, $"{gonfName}.json");
+
+        if (Directory.Exists(gonfDirectory))
+        {
+            Directory.Delete(gonfDirectory, recursive: true);
+        }
+
+        var request = new
+        {
+            gonfName,
+            rooms = new[]
+            {
+                new
+                {
+                    roomId = 1,
+                    roomName = "Entry Hall",
+                    roomDescription = "The starting room.",
+                    roomFloor = 1,
+                    isStartingRoom = true,
+                    exits = new { north = (int?)null, east = (int?)null, south = (int?)null, west = (int?)null, up = (int?)null, down = (int?)null }
+                },
+                new
+                {
+                    roomId = 2,
+                    roomName = "Hallway",
+                    roomDescription = "Not the starting room.",
+                    roomFloor = 1,
+                    isStartingRoom = false,
+                    exits = new { north = (int?)null, east = (int?)null, south = (int?)null, west = (int?)null, up = (int?)null, down = (int?)null }
+                }
+            }
+        };
+
+        try
+        {
+            var response = await client.PostAsJsonAsync("/api/gonf/save", request);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.True(File.Exists(savePath));
+
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(savePath));
+            var root = document.RootElement;
+            var savedRooms = root.GetProperty("rooms").EnumerateArray().ToList();
+
+            var startingRoom = savedRooms.Single(r => r.GetProperty("roomId").GetInt32() == 1);
+            var otherRoom = savedRooms.Single(r => r.GetProperty("roomId").GetInt32() == 2);
+
+            Assert.True(startingRoom.GetProperty("isStartingRoom").GetBoolean());
+            Assert.False(otherRoom.GetProperty("isStartingRoom").GetBoolean());
+        }
+        finally
+        {
+            if (Directory.Exists(gonfDirectory))
+            {
+                Directory.Delete(gonfDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task PostSaveWithoutStartingRoomFlag_DefaultsIsStartingRoomToFalse()
+    {
+        using var client = _factory.CreateClient();
+        var gonfName = $"NoStart_{Guid.NewGuid():N}";
+        var gonfDirectory = Path.Combine(@"C:\gonf\\", gonfName);
+        var savePath = Path.Combine(gonfDirectory, $"{gonfName}.json");
+
+        if (Directory.Exists(gonfDirectory))
+        {
+            Directory.Delete(gonfDirectory, recursive: true);
+        }
+
+        var request = new
+        {
+            gonfName,
+            rooms = new[]
+            {
+                new
+                {
+                    roomId = 1,
+                    roomName = "Room A",
+                    roomDescription = "First room",
+                    roomFloor = 1,
+                    exits = new { north = (int?)null, east = (int?)null, south = (int?)null, west = (int?)null, up = (int?)null, down = (int?)null }
+                }
+            }
+        };
+
+        try
+        {
+            var response = await client.PostAsJsonAsync("/api/gonf/save", request);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.True(File.Exists(savePath));
+
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(savePath));
+            var root = document.RootElement;
+            var savedRoom = root.GetProperty("rooms").EnumerateArray().Single();
+
+            Assert.False(savedRoom.GetProperty("isStartingRoom").GetBoolean());
+        }
+        finally
+        {
+            if (Directory.Exists(gonfDirectory))
+            {
+                Directory.Delete(gonfDirectory, recursive: true);
+            }
+        }
     }
 
     [Fact]
