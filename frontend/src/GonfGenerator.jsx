@@ -519,6 +519,7 @@ export default function GonfGenerator() {
                   generationSeed,
                   generatedUtc: new Date().toISOString(),
                   previewDataUrl: uploadResult.previewDataUrl,
+                  source: 'uploaded',
                 },
               }
             : existingRoom,
@@ -603,6 +604,7 @@ export default function GonfGenerator() {
         roomDescription: form.roomDescription.trim(),
         image: existingRoomForImage?.image ?? createEmptyRoomImage(),
         roomFloor,
+        isStartingRoom: Boolean(form.isStartingRoom),
         exits: {
           north: toNullableNumber(form.northExit),
           east: toNullableNumber(form.eastExit),
@@ -613,7 +615,11 @@ export default function GonfGenerator() {
         },
       }
 
-      const nextRooms = stripSecretStorageExits(applyReciprocalLinks(currentRooms, savedRoom))
+      const nextRooms = stripSecretStorageExits(applyReciprocalLinks(currentRooms, savedRoom)).map((room) =>
+        savedRoom.isStartingRoom && room.roomId !== savedRoom.roomId
+          ? { ...room, isStartingRoom: false }
+          : room,
+      )
 
       setSelectedRoomId(nextRoomId)
       setSelectedRoomPanelMode('room')
@@ -846,6 +852,7 @@ export default function GonfGenerator() {
                   generationSeed,
                   generatedUtc: new Date().toISOString(),
                   previewDataUrl: uploadResult.previewDataUrl,
+                  source: 'uploaded',
                 },
               }
             : existingCharacter,
@@ -1017,6 +1024,7 @@ export default function GonfGenerator() {
                   generationSeed,
                   generatedUtc: new Date().toISOString(),
                   previewDataUrl: uploadResult.previewDataUrl,
+                  source: 'uploaded',
                 },
               }
             : existingItem,
@@ -1109,6 +1117,7 @@ export default function GonfGenerator() {
         roomFloor: room.roomFloor,
         systemManagedRoomKey: room.systemManagedRoomKey ?? null,
         isSecretStorage: Boolean(room.isSecretStorage),
+        isStartingRoom: Boolean(room.isStartingRoom),
         image: {
           imageStatus: room.image?.imageStatus ?? 'none',
           attemptIndex: room.image?.attemptIndex ?? 0,
@@ -1118,6 +1127,7 @@ export default function GonfGenerator() {
           fileName: room.image?.fileName ?? '',
           relativePath: room.image?.relativePath ?? '',
           previewDataUrl: room.image?.previewDataUrl ?? '',
+          source: room.image?.source ?? 'generated',
         },
         exits: {
           north: room.exits.north,
@@ -1140,6 +1150,17 @@ export default function GonfGenerator() {
         contents: Array.isArray(item.itemContents)
           ? item.itemContents.map(Number).filter((itemId) => Number.isFinite(itemId))
           : [],
+        image: {
+          imageStatus: item.image?.imageStatus ?? 'none',
+          attemptIndex: item.image?.attemptIndex ?? 0,
+          generationSeed: item.image?.generationSeed ?? '',
+          generatedUtc: item.image?.generatedUtc ?? null,
+          finalizedUtc: item.image?.finalizedUtc ?? null,
+          fileName: item.image?.fileName ?? '',
+          relativePath: item.image?.relativePath ?? '',
+          previewDataUrl: item.image?.previewDataUrl ?? '',
+          source: item.image?.source ?? 'generated',
+        },
       })),
       characters: (characters.length > 0 ? characters : draftCharacters).map((character, index) => ({
         characterId: character.characterId ?? index + 1,
@@ -1159,6 +1180,7 @@ export default function GonfGenerator() {
           fileName: character.image?.fileName ?? '',
           relativePath: character.image?.relativePath ?? '',
           previewDataUrl: character.image?.previewDataUrl ?? '',
+          source: character.image?.source ?? 'generated',
         },
       })),
     }
@@ -1330,6 +1352,15 @@ export default function GonfGenerator() {
                     </option>
                   ))}
                 </select>
+              </label>
+
+              <label className="gg-field gg-checkbox-field">
+                <span>Starting Room</span>
+                <input
+                  type="checkbox"
+                  checked={form.isStartingRoom}
+                  onChange={(event) => onFormChange('isStartingRoom', event.target.checked)}
+                />
               </label>
 
               <section className="gg-exit-compass" aria-label="Compass Exits">

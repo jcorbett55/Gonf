@@ -3,6 +3,8 @@ import { API_BASE_URL } from './shared'
 export const MAX_IMAGE_UPLOAD_BYTES = 2 * 1024 * 1024
 export const ALLOWED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif']
 export const ALLOWED_IMAGE_MIME_TYPES = ['image/png', 'image/jpeg', 'image/gif']
+export const ALLOWED_CHARACTER_IMAGE_EXTENSIONS = ['.png', '.gif']
+export const ALLOWED_CHARACTER_IMAGE_MIME_TYPES = ['image/png', 'image/gif']
 
 const IMAGE_JOB_POLL_DELAY_MS = 2000
 const IMAGE_JOB_MAX_POLLS = 300
@@ -18,7 +20,7 @@ function getFileExtension(fileName) {
   return lastDotIndex >= 0 ? fileName.slice(lastDotIndex).toLowerCase() : ''
 }
 
-export function validateImageFileForUpload(file) {
+export function validateImageFileForUpload(file, entityType) {
   if (!file) {
     return 'Please choose an image file to continue.'
   }
@@ -27,13 +29,21 @@ export function validateImageFileForUpload(file) {
     return 'Image file must be 2MB or smaller.'
   }
 
+  const isCharacter = entityType === 'character'
+  const allowedExtensions = isCharacter ? ALLOWED_CHARACTER_IMAGE_EXTENSIONS : ALLOWED_IMAGE_EXTENSIONS
+  const allowedMimeTypes = isCharacter ? ALLOWED_CHARACTER_IMAGE_MIME_TYPES : ALLOWED_IMAGE_MIME_TYPES
+
   const extension = getFileExtension(file.name ?? '')
-  if (!ALLOWED_IMAGE_EXTENSIONS.includes(extension)) {
-    return 'Image file must be a .png, .jpg, .jpeg, or .gif file.'
+  if (!allowedExtensions.includes(extension)) {
+    return isCharacter
+      ? 'Character images must be a .png or .gif file so they support transparency for map overlays.'
+      : 'Image file must be a .png, .jpg, .jpeg, or .gif file.'
   }
 
-  if (file.type && !ALLOWED_IMAGE_MIME_TYPES.includes(file.type)) {
-    return 'Image file type is not supported.'
+  if (file.type && !allowedMimeTypes.includes(file.type)) {
+    return isCharacter
+      ? 'Character images must be a .png or .gif file so they support transparency for map overlays.'
+      : 'Image file type is not supported.'
   }
 
   return null
@@ -154,7 +164,7 @@ export async function requestProviderEntityImage(entityType, gonfName, entityIdK
  * Uploads a user-provided image file for the given entity type ('room' | 'character' | 'item').
  */
 export async function uploadEntityImage(entityType, file, attemptIndex, generationSeed) {
-  const validationError = validateImageFileForUpload(file)
+  const validationError = validateImageFileForUpload(file, entityType)
   if (validationError) {
     return {
       success: false,

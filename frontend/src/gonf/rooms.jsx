@@ -1,4 +1,13 @@
-import { API_BASE_URL, allDirections, floors, oppositeDirection, planarDirections, SYSTEM_MANAGED_ROOMS, toNullableNumber } from './shared'
+import {
+  API_BASE_URL,
+  allDirections,
+  floors,
+  oppositeDirection,
+  planarDirections,
+  SYSTEM_MANAGED_ROOMS,
+  toNullableNumber,
+  isCharacterImageOverlayEligible,
+} from './shared'
 
 export function createEmptyForm() {
   return {
@@ -6,6 +15,7 @@ export function createEmptyForm() {
     roomName: '',
     roomDescription: '',
     roomFloor: '',
+    isStartingRoom: false,
     northExit: '',
     eastExit: '',
     southExit: '',
@@ -25,6 +35,7 @@ export function createEmptyRoomImage() {
     fileName: '',
     relativePath: '',
     previewDataUrl: '',
+    source: 'generated',
   }
 }
 
@@ -42,6 +53,7 @@ export function normalizeRoomImageForState(rawImage) {
     fileName: String(rawImage.fileName ?? ''),
     relativePath: String(rawImage.relativePath ?? ''),
     previewDataUrl: String(rawImage.previewDataUrl ?? ''),
+    source: String(rawImage.source ?? 'generated'),
   }
 }
 
@@ -207,6 +219,7 @@ export function createRoomImageCandidate(room, attemptIndex) {
     fileName: '',
     relativePath: '',
     previewDataUrl: placeholderPreview,
+    source: 'generated',
   }
 }
 
@@ -755,6 +768,7 @@ export function mapRoomForState(rawRoom, gonfName) {
     isSecretStorage:
       explicitSystemManagedDefinition?.key === 'secret-storage' ||
       (legacySystemManagedDefinition?.key === 'secret-storage' && hasNoExits(exits)),
+    isStartingRoom: Boolean(rawRoom.isStartingRoom),
     exits,
   }
 
@@ -772,6 +786,7 @@ export function roomToFormState(room) {
     roomName: room.roomName,
     roomDescription: room.roomDescription,
     roomFloor: String(room.roomFloor),
+    isStartingRoom: Boolean(room.isStartingRoom),
     northExit: room.exits.north ? String(room.exits.north) : '',
     eastExit: room.exits.east ? String(room.exits.east) : '',
     southExit: room.exits.south ? String(room.exits.south) : '',
@@ -807,6 +822,12 @@ export function renderSelectedRoomPanel({
   onSelectCharacterForEdit,
 }) {
   const isGeneratingImage = selectedRoom?.image?.imageStatus === 'generating'
+  const overlayCharacters = (selectedRoomCharacters ?? []).filter((character) =>
+    isCharacterImageOverlayEligible(character.image),
+  )
+  const MAX_VISIBLE_ROOM_OVERLAYS = 4
+  const visibleOverlayCharacters = overlayCharacters.slice(0, MAX_VISIBLE_ROOM_OVERLAYS)
+  const hiddenOverlayCount = overlayCharacters.length - visibleOverlayCharacters.length
 
   if (selectedRoomPanelMode === 'items') {
     return (
@@ -891,11 +912,11 @@ export function renderSelectedRoomPanel({
                   </div>
 
                   <div className="gg-room-image-actions">
-                    <label className="gg-room-image-upload" title="Upload image">
+                    <label className="gg-room-image-upload" title="Upload image (.png or .gif with a transparent background for map overlays)">
                       <span aria-hidden="true">⬆</span>
                       <input
                         type="file"
-                        accept=".png,.jpg,.jpeg,.gif,image/png,image/jpeg,image/gif"
+                        accept=".png,.gif,image/png,image/gif"
                         className="gg-room-image-upload-input"
                         onChange={(event) => {
                           const file = event.target.files?.[0]
@@ -928,6 +949,7 @@ export function renderSelectedRoomPanel({
                   </div>
 
                   <p className="gg-room-image-status">Image status: {character.image?.imageStatus ?? 'none'}</p>
+                  <p className="gg-room-image-hint">Uploads must be .png or .gif with a transparent background for map overlays.</p>
                 </section>
                 {Array.isArray(character.characterContains) && character.characterContains.length > 0 && (
                   <div className="gg-item-contents-block">
@@ -965,6 +987,29 @@ export function renderSelectedRoomPanel({
             <img src={selectedRoom.image.previewDataUrl} alt={`Generated room preview for ${selectedRoom.roomName}`} />
           ) : (
             <div className="gg-room-image-empty">No generated image yet.</div>
+          )}
+          {overlayCharacters.length > 0 && (
+            <div className="gg-room-character-overlays">
+              {visibleOverlayCharacters.map((character) => (
+                <div key={character.characterId} className="gg-room-character-overlay-frame">
+                  <img
+                    className="gg-room-character-overlay"
+                    src={character.image.previewDataUrl}
+                    alt={`${character.characterName} in ${selectedRoom.roomName}`}
+                    title={character.characterName}
+                  />
+                </div>
+              ))}
+              {hiddenOverlayCount > 0 && (
+                <div
+                  className="gg-room-character-overlay-more"
+                  title={`${hiddenOverlayCount} more character${hiddenOverlayCount === 1 ? '' : 's'} in this room`}
+                  aria-label={`${hiddenOverlayCount} more character${hiddenOverlayCount === 1 ? '' : 's'} in this room`}
+                >
+                  +{hiddenOverlayCount}
+                </div>
+              )}
+            </div>
           )}
           {isGeneratingImage && (
             <div className="gg-room-image-badge" aria-live="polite">

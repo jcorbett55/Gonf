@@ -28,3 +28,14 @@ export function toNullableNumber(value) {
   const parsed = Number(value)
   return Number.isNaN(parsed) ? null : parsed
 }
+
+const OVERLAY_ELIGIBLE_IMAGE_EXTENSIONS = ['.png', '.gif']
+
+export function isCharacterImageOverlayEligible(image) {
+  if (!image || image.imageStatus !== 'finalized' || !image.previewDataUrl) {
+    return false
+  }
+
+  const fileName = String(image.fileName ?? '').toLowerCase()
+  return OVERLAY_ELIGIBLE_IMAGE_EXTENSIONS.some((extension) => fileName.endsWith(extension))
+}

@@ -24,7 +24,7 @@ export function parseLoadedGonf(payload) {
 
   const items = Array.isArray(payload.items)
     ? payload.items
-        .map((rawItem, index) => mapItemForState(rawItem, index))
+        .map((rawItem, index) => mapItemForState(rawItem, index, String(payload.gonfName ?? '')))
         .filter(Boolean)
     : []
 

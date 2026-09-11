@@ -13,7 +13,8 @@ public sealed record SaveGonfRoomRequest(
     string RoomDescription,
     int RoomFloor,
     SaveGonfExitsRequest Exits,
-    SaveGonfRoomImageRequest? Image = null
+    SaveGonfRoomImageRequest? Image = null,
+    bool IsStartingRoom = false
 );
 
 public sealed record SaveGonfExitsRequest(int? North, int? East, int? South, int? West, int? Up, int? Down);
@@ -49,7 +50,8 @@ public sealed record SaveGonfRoomImageRequest(
     DateTimeOffset? FinalizedUtc,
     string? FileName,
     string? RelativePath,
-    string? PreviewDataUrl
+    string? PreviewDataUrl,
+    string? Source = null
 );
 
 public sealed record SaveGonfCharacterImageRequest(
@@ -60,7 +62,8 @@ public sealed record SaveGonfCharacterImageRequest(
     DateTimeOffset? FinalizedUtc,
     string? FileName,
     string? RelativePath,
-    string? PreviewDataUrl
+    string? PreviewDataUrl,
+    string? Source = null
 );
 
 public sealed record SaveGonfItemImageRequest(
@@ -71,5 +74,6 @@ public sealed record SaveGonfItemImageRequest(
     DateTimeOffset? FinalizedUtc,
     string? FileName,
     string? RelativePath,
-    string? PreviewDataUrl
+    string? PreviewDataUrl,
+    string? Source = null
 );
