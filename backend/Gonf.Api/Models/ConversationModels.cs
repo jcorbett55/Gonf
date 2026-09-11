@@ -1,9 +1,16 @@
 namespace Gonf.Api.Models;
 
+public sealed record ConversationCharacterItemInfo(
+    int ItemId,
+    string ItemName,
+    string ItemDescription
+);
+
 public sealed record ConversationCharacterInfo(
     int CharacterId,
     string CharacterName,
-    string CharacterDescription
+    string CharacterDescription,
+    IReadOnlyList<ConversationCharacterItemInfo>? CarriedItems = null
 );
 
 public sealed record ConversationTranscriptEntry(

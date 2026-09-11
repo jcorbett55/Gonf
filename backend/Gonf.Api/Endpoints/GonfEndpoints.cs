@@ -14,7 +14,7 @@ public static class GonfEndpoints
         })
         .WithName("SaveGonf");
 
-        app.MapGet("/api/gonf/image/{gonfName}/{fileName}", (string gonfName, string fileName) =>
+        app.MapGet("/api/gonf/image/{gonfName}/{fileName}", (string gonfName, string fileName, HttpContext httpContext) =>
         {
             if (string.IsNullOrWhiteSpace(gonfName) || string.IsNullOrWhiteSpace(fileName))
             {
@@ -38,7 +38,13 @@ public static class GonfEndpoints
                 return CreateErrorResult(StatusCodes.Status404NotFound, "IMAGE_NOT_FOUND", "Referenced room image was not found.");
             }
 
-            return Results.File(imagePath, contentType: imageContentType);
+            httpContext.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+            httpContext.Response.Headers.Pragma = "no-cache";
+            httpContext.Response.Headers.Expires = "0";
+
+            var lastWriteTimeUtc = File.GetLastWriteTimeUtc(imagePath);
+
+            return Results.File(imagePath, contentType: imageContentType, lastModified: lastWriteTimeUtc);
         })
         .WithName("GetGonfImage");
 

@@ -67,15 +67,15 @@
   inset: 0;
   display: flex;
   align-items: flex-end;
-  justify-content: space-evenly;
+  justify-content: center;
   gap: 0.4rem;
   padding: 0 1rem 1rem;
   pointer-events: none;
 }
 
 .gp-room-character-overlay-frame {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
+  width: auto;
   max-width: min(90%, 32.5rem);
   height: 100%;
   overflow: visible;
@@ -84,9 +84,14 @@
   justify-content: center;
 }
 
+.gp-room-character-overlay-frame + .gp-room-character-overlay-frame {
+  margin-left: clamp(-45%, calc(-1% - (var(--gp-overlay-count, 1) - 2) * 4%), -1%);
+}
+
 .gp-room-character-overlay {
-  width: 100%;
+  width: auto;
   height: 100%;
+  max-width: 100%;
   object-fit: contain;
   object-position: center bottom;
   border: none;
@@ -217,6 +222,12 @@
 
 .gp-conversation-line-player {
   color: #a8d5ff;
+}
+
+.gp-conversation-line-system {
+  color: #9aa5b1;
+  font-style: italic;
+  font-size: 0.9em;
 }
 
 .gp-conversation-empty,

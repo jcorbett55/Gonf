@@ -611,14 +611,17 @@ th {
 }
 
 .gg-room-character-overlay-frame {
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: min(32.2%, 6.58rem);
+  flex: 0 0 auto;
+  width: min(32.2%, 6.58rem);
   height: 70%;
   overflow: hidden;
   display: flex;
   align-items: flex-end;
   justify-content: center;
+}
+
+.gg-room-character-overlay-frame + .gg-room-character-overlay-frame {
+  margin-left: -8%;
 }
 
 .gg-room-character-overlay {

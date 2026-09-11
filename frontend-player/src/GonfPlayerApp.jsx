@@ -11,26 +11,65 @@ import {
   wanderCharacters,
   getDepartedWandererNames,
   buildMissedWandererLine,
+  detectFollowRequestTarget,
+  detectFollowDismissRequest,
+  isFollowConfirmation,
+  isFollowDecline,
+  buildAlreadyFollowingLine,
+  buildFollowJoinLine,
+  buildFollowDismissalLine,
+  buildFollowCancelLine,
+  buildFollowerRoomAnnouncement,
+  buildFollowStatusLine,
+  buildFollowDismissedStatusLine,
 } from './gonf/gonfEngine'
 import { directionLabels } from './gonf/shared'
 import { fetchConversationTurn } from './gonf/conversationClient'
 
 const MAX_VISIBLE_ROOM_OVERLAYS = 4
+const MAX_CONVERSATION_MEMORY_ENTRIES = 16
 const staircaseDirections = new Set(['up', 'down'])
 const SPEAKER_COLOR_HUES = [210, 15, 145, 45, 280, 0, 190, 320]
 
-function getSpeakerColor(speakerName) {
-  if (speakerName === 'Player') {
-    return null
-  }
 
+const appendConversationMemory = (existingEntries, newEntries) => {
+  const combined = [...existingEntries, ...newEntries]
+  return combined.length > MAX_CONVERSATION_MEMORY_ENTRIES
+    ? combined.slice(combined.length - MAX_CONVERSATION_MEMORY_ENTRIES)
+    : combined
+}
+
+function getSpeakerColorHueFromHash(speakerName) {
   let hash = 0
   for (let index = 0; index < speakerName.length; index += 1) {
     hash = (hash * 31 + speakerName.charCodeAt(index)) >>> 0
   }
 
-  const hue = SPEAKER_COLOR_HUES[hash % SPEAKER_COLOR_HUES.length]
-  return `hsl(${hue}, 70%, 72%)`
+  return SPEAKER_COLOR_HUES[hash % SPEAKER_COLOR_HUES.length]
+}
+
+function buildSpeakerColorAssignments(speakerNames) {
+  const uniqueNames = Array.from(new Set(speakerNames.filter(Boolean)))
+  const assignments = new Map()
+  const usedHueIndices = new Set()
+
+  uniqueNames.forEach((name, index) => {
+    const preferredIndex = SPEAKER_COLOR_HUES.indexOf(getSpeakerColorHueFromHash(name))
+    let hueIndex = preferredIndex
+
+    if (usedHueIndices.has(hueIndex)) {
+      hueIndex = SPEAKER_COLOR_HUES.findIndex((_, candidateIndex) => !usedHueIndices.has(candidateIndex))
+    }
+
+    if (hueIndex === -1 || hueIndex === undefined) {
+      hueIndex = index % SPEAKER_COLOR_HUES.length
+    }
+
+    usedHueIndices.add(hueIndex)
+    assignments.set(name, `hsl(${SPEAKER_COLOR_HUES[hueIndex]}, 70%, 72%)`)
+  })
+
+  return assignments
 }
 
 function DirectionIcon({ direction }) {
@@ -61,8 +100,11 @@ function GonfPlayerApp() {
   const [conversationDraft, setConversationDraft] = useState('')
   const [conversationError, setConversationError] = useState('')
   const [isConversationLoading, setIsConversationLoading] = useState(false)
+  const [followerCharacterId, setFollowerCharacterId] = useState(null)
+  const [pendingFollowSwap, setPendingFollowSwap] = useState(null)
   const conversationRoomKeyRef = useRef(null)
   const conversationMemoryRef = useRef([])
+
 
   const onFileChange = async (event) => {
     const file = event.target.files?.[0] ?? null
@@ -88,12 +130,16 @@ function GonfPlayerApp() {
       setGonfData(parsed)
       setCurrentRoomId(startingRoomId)
       setMissedWandererMessage(null)
+      setFollowerCharacterId(null)
+      setPendingFollowSwap(null)
       conversationMemoryRef.current = []
     } catch (error) {
       setLoadError(error?.message ?? 'Could not load this Gonf file. Please verify it is valid.')
       setGonfData(null)
       setCurrentRoomId(null)
       setMissedWandererMessage(null)
+      setFollowerCharacterId(null)
+      setPendingFollowSwap(null)
       conversationMemoryRef.current = []
     }
   }
@@ -108,19 +154,45 @@ function GonfPlayerApp() {
     [gonfData, currentRoomId],
   )
 
+  const followerCharacter = useMemo(
+    () => (gonfData ? gonfData.characters.find((character) => character.characterId === followerCharacterId) ?? null : null),
+    [gonfData, followerCharacterId],
+  )
+
+  const nonFollowerCharactersInRoom = useMemo(
+    () => charactersInRoom.filter((character) => character.characterId !== followerCharacterId),
+    [charactersInRoom, followerCharacterId],
+  )
+
   const overlayCharacters = useMemo(
     () => (gonfData ? getOverlayEligibleCharactersInRoom(gonfData.characters, currentRoomId) : []),
     [gonfData, currentRoomId],
   )
+
+  const speakerColorAssignments = useMemo(() => {
+    const roomSpeakerNames = charactersInRoom.map((character) => character.characterName)
+    const logSpeakerNames = conversationLog
+      .map((entry) => entry.speaker)
+      .filter((speaker) => speaker !== 'Player' && speaker !== 'System')
+    return buildSpeakerColorAssignments([...roomSpeakerNames, ...logSpeakerNames])
+  }, [charactersInRoom, conversationLog])
   const visibleOverlayCharacters = overlayCharacters.slice(0, MAX_VISIBLE_ROOM_OVERLAYS)
   const hiddenOverlayCount = Math.max(0, overlayCharacters.length - MAX_VISIBLE_ROOM_OVERLAYS)
 
   const validExits = useMemo(() => (currentRoom ? getValidExits(currentRoom) : []), [currentRoom])
 
-  const narrationText = useMemo(
-    () => (currentRoom ? buildRoomNarrationText(currentRoom, charactersInRoom) : ''),
-    [currentRoom, charactersInRoom],
-  )
+  const narrationText = useMemo(() => {
+    if (!currentRoom) {
+      return ''
+    }
+
+    const baseNarration = buildRoomNarrationText(currentRoom, nonFollowerCharactersInRoom)
+    if (!followerCharacter) {
+      return baseNarration
+    }
+
+    return `${baseNarration} ${buildFollowerRoomAnnouncement(followerCharacter.characterName)}`.trim()
+  }, [currentRoom, nonFollowerCharactersInRoom, followerCharacter])
 
   useEffect(() => {
     if (!currentRoom) {
@@ -136,7 +208,7 @@ function GonfPlayerApp() {
     setConversationDraft('')
     setConversationError('')
 
-    if (charactersInRoom.length === 0) {
+    if (nonFollowerCharactersInRoom.length === 0) {
       return
     }
 
@@ -146,7 +218,8 @@ function GonfPlayerApp() {
     fetchConversationTurn({
       roomName: currentRoom.roomName,
       roomDescription: currentRoom.roomDescription,
-      characters: charactersInRoom,
+      characters: nonFollowerCharactersInRoom,
+      items: gonfData.items,
       transcript: [],
       playerMessage: null,
       previousLines: conversationMemoryRef.current,
@@ -157,7 +230,7 @@ function GonfPlayerApp() {
         }
         const newEntries = lines.map((line) => ({ speaker: line.speaker, text: line.text }))
         setConversationLog(newEntries)
-        conversationMemoryRef.current = [...conversationMemoryRef.current, ...newEntries]
+        conversationMemoryRef.current = appendConversationMemory(conversationMemoryRef.current, newEntries)
       })
       .catch((error) => {
         if (cancelled) {
@@ -174,7 +247,7 @@ function GonfPlayerApp() {
     return () => {
       cancelled = true
     }
-  }, [currentRoom, currentRoomId, charactersInRoom])
+  }, [currentRoom, currentRoomId, nonFollowerCharactersInRoom])
 
   const onSubmitConversation = async (event) => {
     event.preventDefault()
@@ -184,12 +257,102 @@ function GonfPlayerApp() {
       return
     }
 
+    setConversationDraft('')
+    setConversationError('')
+
+    if (pendingFollowSwap) {
+      const nextLogWithPlayer = [...conversationLog, { speaker: 'Player', text: trimmedMessage }]
+
+      if (isFollowConfirmation(trimmedMessage)) {
+        const dismissedLine = buildFollowDismissalLine(pendingFollowSwap.currentFollowerName)
+        const dismissedStatusLine = buildFollowDismissedStatusLine(pendingFollowSwap.currentFollowerName)
+        const joinLine = buildFollowJoinLine(pendingFollowSwap.requestedCharacter.characterName)
+        const joinStatusLine = buildFollowStatusLine(pendingFollowSwap.requestedCharacter.characterName)
+        setConversationLog([...nextLogWithPlayer, dismissedLine, dismissedStatusLine, joinLine, joinStatusLine])
+        conversationMemoryRef.current = appendConversationMemory(conversationMemoryRef.current, [dismissedLine, joinLine])
+        setFollowerCharacterId(pendingFollowSwap.requestedCharacter.characterId)
+        setGonfData((previousGonfData) => {
+          if (!previousGonfData) {
+            return previousGonfData
+          }
+          return {
+            ...previousGonfData,
+            characters: previousGonfData.characters.map((character) =>
+              character.characterId === pendingFollowSwap.currentFollowerId
+                ? { ...character, characterLocation: character.originalLocation || character.characterLocation }
+                : character,
+            ),
+          }
+        })
+      } else if (isFollowDecline(trimmedMessage)) {
+        const cancelLine = buildFollowCancelLine(pendingFollowSwap.currentFollowerName)
+        setConversationLog([...nextLogWithPlayer, cancelLine])
+        conversationMemoryRef.current = appendConversationMemory(conversationMemoryRef.current, [cancelLine])
+      } else {
+        setConversationLog(nextLogWithPlayer)
+      }
+
+      setPendingFollowSwap(null)
+      return
+    }
+
+    if (followerCharacter) {
+      const dismissRequested = detectFollowDismissRequest(trimmedMessage, followerCharacter)
+      if (dismissRequested) {
+        const nextLogWithPlayer = [...conversationLog, { speaker: 'Player', text: trimmedMessage }]
+        const dismissedLine = buildFollowDismissalLine(followerCharacter.characterName)
+        const dismissedStatusLine = buildFollowDismissedStatusLine(followerCharacter.characterName)
+        setConversationLog([...nextLogWithPlayer, dismissedLine, dismissedStatusLine])
+        conversationMemoryRef.current = appendConversationMemory(conversationMemoryRef.current, [dismissedLine])
+        setFollowerCharacterId(null)
+        setGonfData((previousGonfData) => {
+          if (!previousGonfData) {
+            return previousGonfData
+          }
+          return {
+            ...previousGonfData,
+            characters: previousGonfData.characters.map((character) =>
+              character.characterId === followerCharacter.characterId
+                ? { ...character, characterLocation: character.originalLocation || character.characterLocation }
+                : character,
+            ),
+          }
+        })
+        return
+      }
+    }
+
+    const followTarget = detectFollowRequestTarget(
+      trimmedMessage,
+      charactersInRoom.filter((character) => character.characterId !== followerCharacterId),
+    )
+
+    if (followTarget) {
+      if (followerCharacter && followerCharacter.characterId !== followTarget.characterId) {
+        const nextLogWithPlayer = [...conversationLog, { speaker: 'Player', text: trimmedMessage }]
+        const askLine = buildAlreadyFollowingLine(followerCharacter.characterName, followTarget.characterName)
+        setConversationLog([...nextLogWithPlayer, askLine])
+        setPendingFollowSwap({
+          currentFollowerId: followerCharacter.characterId,
+          currentFollowerName: followerCharacter.characterName,
+          requestedCharacter: followTarget,
+        })
+        return
+      }
+
+      const nextLogWithPlayer = [...conversationLog, { speaker: 'Player', text: trimmedMessage }]
+      const joinLine = buildFollowJoinLine(followTarget.characterName)
+      const joinStatusLine = buildFollowStatusLine(followTarget.characterName)
+      setConversationLog([...nextLogWithPlayer, joinLine, joinStatusLine])
+      conversationMemoryRef.current = appendConversationMemory(conversationMemoryRef.current, [joinLine])
+      setFollowerCharacterId(followTarget.characterId)
+      return
+    }
+
     const transcriptSoFar = conversationLog.map((entry) => ({ speaker: entry.speaker, text: entry.text }))
     const nextLogWithPlayer = [...conversationLog, { speaker: 'Player', text: trimmedMessage }]
 
     setConversationLog(nextLogWithPlayer)
-    setConversationDraft('')
-    setConversationError('')
     setIsConversationLoading(true)
 
     try {
@@ -197,6 +360,7 @@ function GonfPlayerApp() {
         roomName: currentRoom.roomName,
         roomDescription: currentRoom.roomDescription,
         characters: charactersInRoom,
+        items: gonfData.items,
         transcript: [...transcriptSoFar, { speaker: 'Player', text: trimmedMessage }],
         playerMessage: trimmedMessage,
         previousLines: conversationMemoryRef.current,
@@ -204,7 +368,7 @@ function GonfPlayerApp() {
 
       const newEntries = lines.map((line) => ({ speaker: line.speaker, text: line.text }))
       setConversationLog((previousLog) => [...previousLog, ...newEntries])
-      conversationMemoryRef.current = [...conversationMemoryRef.current, ...newEntries]
+      conversationMemoryRef.current = appendConversationMemory(conversationMemoryRef.current, newEntries)
     } catch (error) {
       setConversationError(error?.message ?? 'Could not reach the conversation service.')
     } finally {
@@ -228,8 +392,15 @@ function GonfPlayerApp() {
       }
 
       const previousCharactersInTargetRoom = getCharactersInRoom(previousGonfData.characters, targetRoomId)
-      const nextCharacters = wanderCharacters(previousGonfData.rooms, previousGonfData.characters)
-      const nextCharactersInTargetRoom = getCharactersInRoom(nextCharacters, targetRoomId)
+      const nextCharacters = wanderCharacters(previousGonfData.rooms, previousGonfData.characters, Math.random, followerCharacterId)
+      const finalCharacters = followerCharacterId
+        ? nextCharacters.map((character) =>
+            character.characterId === followerCharacterId
+              ? { ...character, characterLocation: String(targetRoomId) }
+              : character,
+          )
+        : nextCharacters
+      const nextCharactersInTargetRoom = getCharactersInRoom(finalCharacters, targetRoomId)
 
       const departedWandererNames = getDepartedWandererNames(
         previousCharactersInTargetRoom,
@@ -239,7 +410,7 @@ function GonfPlayerApp() {
 
       return {
         ...previousGonfData,
-        characters: nextCharacters,
+        characters: finalCharacters,
       }
     })
     setCurrentRoomId(targetRoomId)
@@ -274,7 +445,7 @@ function GonfPlayerApp() {
         )}
 
         {overlayCharacters.length > 0 && (
-          <div className="gp-room-character-overlays">
+          <div className="gp-room-character-overlays" style={{ '--gp-overlay-count': visibleOverlayCharacters.length }}>
             {visibleOverlayCharacters.map((character) => (
               <div key={character.characterId} className="gp-room-character-overlay-frame">
                 <img
@@ -326,10 +497,20 @@ function GonfPlayerApp() {
             {conversationLog.map((entry, index) => (
               <p
                 key={`${entry.speaker}-${index}`}
-                className={entry.speaker === 'Player' ? 'gp-conversation-line gp-conversation-line-player' : 'gp-conversation-line'}
-                style={entry.speaker !== 'Player' ? { color: getSpeakerColor(entry.speaker) } : undefined}
+                className={
+                  entry.speaker === 'Player'
+                    ? 'gp-conversation-line gp-conversation-line-player'
+                    : entry.speaker === 'System'
+                      ? 'gp-conversation-line gp-conversation-line-system'
+                      : 'gp-conversation-line'
+                }
+                style={entry.speaker !== 'Player' && entry.speaker !== 'System' ? { color: speakerColorAssignments.get(entry.speaker) } : undefined}
               >
-                <strong>{entry.speaker}:</strong> {entry.text}
+                {entry.speaker === 'System' ? entry.text : (
+                  <>
+                    <strong>{entry.speaker}:</strong> {entry.text}
+                  </>
+                )}
               </p>
             ))}
             {isConversationLoading && (

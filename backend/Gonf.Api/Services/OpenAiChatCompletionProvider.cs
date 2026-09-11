@@ -3,11 +3,12 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Gonf.Api.Models;
 
 namespace Gonf.Api.Services;
 
-public sealed class OpenAiChatCompletionProvider : IChatCompletionProvider
+public sealed partial class OpenAiChatCompletionProvider : IChatCompletionProvider
 {
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
@@ -51,6 +52,13 @@ public sealed class OpenAiChatCompletionProvider : IChatCompletionProvider
         var systemPrompt = BuildSystemPrompt(request);
         var userPrompt = BuildUserPrompt(request);
 
+        var maxTokens = int.TryParse(_configuration["ChatProvider:MaxResponseTokens"], out var parsedMaxTokens)
+            ? parsedMaxTokens
+            : 200;
+        var contextWindow = int.TryParse(_configuration["ChatProvider:ContextWindow"], out var parsedContextWindow)
+            ? parsedContextWindow
+            : 2048;
+
         var payload = new
         {
             model,
@@ -60,6 +68,12 @@ public sealed class OpenAiChatCompletionProvider : IChatCompletionProvider
                 new { role = "user", content = userPrompt },
             },
             temperature = 0.9,
+            max_tokens = maxTokens,
+            options = new
+            {
+                num_predict = maxTokens,
+                num_ctx = contextWindow,
+            },
         };
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, requestUri)
@@ -88,6 +102,8 @@ public sealed class OpenAiChatCompletionProvider : IChatCompletionProvider
             return new ConversationTurnResult(false, null, "CHAT_GENERATION_FAILED", "Conversation generation request failed.");
         }
 
+        using var _ = response;
+
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
@@ -115,11 +131,14 @@ public sealed class OpenAiChatCompletionProvider : IChatCompletionProvider
                 return new ConversationTurnResult(false, null, "CHAT_GENERATION_FAILED", "Conversation provider response could not be parsed.");
             }
 
-            var validSpeakerNames = new HashSet<string>(
-                request.Characters.Select(character => character.CharacterName),
-                StringComparer.OrdinalIgnoreCase);
+            var filteredLines = lines
+                .Select(line => ResolveSpeakerName(line, request.Characters) is { } resolvedName
+                    ? line with { Speaker = resolvedName }
+                    : null)
+                .Where(line => line is not null)
+                .Select(line => line!)
+                .ToArray();
 
-            var filteredLines = lines.Where(line => validSpeakerNames.Contains(line.Speaker)).ToArray();
             if (filteredLines.Length == 0)
             {
                 _logger.LogWarning(
@@ -132,16 +151,43 @@ public sealed class OpenAiChatCompletionProvider : IChatCompletionProvider
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Chat completion response parsing failed.");
+
             return new ConversationTurnResult(false, null, "CHAT_GENERATION_FAILED", "Conversation provider response could not be parsed.");
         }
+    }
+
+    private static string? ResolveSpeakerName(ConversationLine line, IReadOnlyList<ConversationCharacterInfo> characters)
+    {
+        if (string.IsNullOrWhiteSpace(line.Speaker))
+        {
+            return null;
+        }
+
+        var exactMatch = characters.FirstOrDefault(character =>
+            string.Equals(character.CharacterName, line.Speaker, StringComparison.OrdinalIgnoreCase));
+        if (exactMatch is not null)
+        {
+            return exactMatch.CharacterName;
+        }
+
+        var speakerWords = line.Speaker
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var partialMatches = characters
+            .Where(character => speakerWords.Any(word =>
+                character.CharacterName.Contains(word, StringComparison.OrdinalIgnoreCase))
+                || character.CharacterName.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                    .Any(namePart => string.Equals(namePart, line.Speaker, StringComparison.OrdinalIgnoreCase)))
+            .ToArray();
+
+        return partialMatches.Length == 1 ? partialMatches[0].CharacterName : null;
     }
 
     private static string BuildSystemPrompt(ConversationTurnRequest request)
     {
         var characterList = string.Join(
             "\n",
-            request.Characters.Select(character => $"- {character.CharacterName}: {character.CharacterDescription}"));
+            request.Characters.Select(character => $"- {character.CharacterName}: {character.CharacterDescription}{BuildCarriedItemsSuffix(character)}"));
 
         return
             "You are role-playing as one or more characters inside a text adventure game. " +
@@ -154,12 +200,27 @@ public sealed class OpenAiChatCompletionProvider : IChatCompletionProvider
             "Being rude, blunt, or unhelpful in-character is expected and appropriate here; only avoid real-world slurs, graphic violence, or explicit self-harm content. " +
             "Not every character needs to respond on every turn - some turns only one character speaks, some turns nobody responds if they have nothing to add. " +
             "If a character's dialogue directly mentions or addresses another present character by name, that mentioned character should be noticeably more likely to respond next (to argue back, agree, or react), similar to a real group conversation. " +
+            "Some characters listed above have items shown in parentheses after their description - these are the items that character is currently carrying. " +
+            "If the player asks who has a specific item, or otherwise references an item that a present character is carrying, that character should acknowledge having it in character (for example, producing it, patting a pocket, or holding it up) rather than denying having it. " +
+            "Do not have a character claim to carry an item that is not listed for them, and do not have a character give away, drop, or hand over an item merely by mentioning it in dialogue. " +
+            "If the player asks a character what they are carrying or holding and that character has no items listed in parentheses, that character must clearly and explicitly state, in character, that they are not carrying or holding anything of note - do not have them deflect, change the subject, or speak vaguely about possessions in general. " +
             "If information in 'Things already said' below covers what the player is asking about, do not repeat that exact line again - instead have the character briefly acknowledge they already said it (for example: I already told you..., Like I said...) or give a short new reaction, rather than restating the original line verbatim. " +
             $"Room: {request.RoomName}. Room description: {request.RoomDescription}.\n" +
             $"Characters present:\n{characterList}\n\n" +
             BuildPreviousLinesSection(request) +
             "Respond ONLY with strict JSON matching this shape, with no markdown fences or extra commentary: " +
             "{\"lines\":[{\"speaker\":\"CharacterName\",\"text\":\"Dialogue line\"}]}";
+    }
+
+    private static string BuildCarriedItemsSuffix(ConversationCharacterInfo character)
+    {
+        if (character.CarriedItems is not { Count: > 0 })
+        {
+            return string.Empty;
+        }
+
+        var itemNames = string.Join(", ", character.CarriedItems.Select(item => item.ItemName));
+        return $" (carrying: {itemNames})";
     }
 
     private static string BuildPreviousLinesSection(ConversationTurnRequest request)
@@ -230,21 +291,60 @@ public sealed class OpenAiChatCompletionProvider : IChatCompletionProvider
         }
 
         var jsonObject = ExtractFirstJsonObject(trimmed);
-        if (jsonObject is null)
+        if (jsonObject is not null)
+        {
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<ConversationLinesEnvelope>(jsonObject, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                });
+
+                var lines = parsed?.Lines?
+                    .Where(line => !string.IsNullOrWhiteSpace(line.Speaker) && !string.IsNullOrWhiteSpace(line.Text))
+                    .Select(line => new ConversationLine(line.Speaker!, line.Text!))
+                    .ToArray();
+
+                if (lines is { Length: > 0 })
+                {
+                    return lines;
+                }
+            }
+            catch (JsonException)
+            {
+                // Fall through to salvage whatever complete "speaker"/"text" pairs we can find,
+                // e.g. when the model response was truncated mid-array.
+            }
+        }
+
+        return ExtractConversationLinesLoosely(trimmed);
+    }
+
+    private static IReadOnlyList<ConversationLine>? ExtractConversationLinesLoosely(string text)
+    {
+        var matches = ConversationLinePairPattern().Matches(text);
+        if (matches.Count == 0)
         {
             return null;
         }
 
-        var parsed = JsonSerializer.Deserialize<ConversationLinesEnvelope>(jsonObject, new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true,
-        });
-
-        return parsed?.Lines?
+        var lines = matches
+            .Select(match => new ConversationLine(
+                Unescape(match.Groups["speaker"].Value),
+                Unescape(match.Groups["text"].Value)))
             .Where(line => !string.IsNullOrWhiteSpace(line.Speaker) && !string.IsNullOrWhiteSpace(line.Text))
-            .Select(line => new ConversationLine(line.Speaker!, line.Text!))
             .ToArray();
+
+        return lines.Length > 0 ? lines : null;
     }
+
+    private static string Unescape(string value) =>
+        value.Replace("\\\"", "\"").Replace("\\n", "\n").Replace("\\\\", "\\");
+
+    [GeneratedRegex(
+        "\"speaker\"\\s*:\\s*\"(?<speaker>(?:[^\"\\\\]|\\\\.)*)\"\\s*,\\s*\"text\"\\s*:\\s*\"(?<text>(?:[^\"\\\\]|\\\\.)*)\"",
+        RegexOptions.Singleline)]
+    private static partial Regex ConversationLinePairPattern();
 
     private static string? ExtractFirstJsonObject(string text)
     {

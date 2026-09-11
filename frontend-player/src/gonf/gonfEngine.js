@@ -71,13 +71,18 @@ function mapCharacterForPlayerState(rawCharacter, index, gonfName) {
   const previewDataUrl =
     normalizedImage.previewDataUrl ||
     (normalizedImage.imageStatus === 'finalized' ? buildSavedImageUrl(gonfName, normalizedImage) : '')
+  const containsSource = Array.isArray(rawCharacter.contains ?? rawCharacter.characterContains)
+    ? rawCharacter.contains ?? rawCharacter.characterContains
+    : []
 
   return {
     characterId: Number(rawCharacter.characterId ?? rawCharacter.id ?? index + 1),
     characterName: String(rawCharacter.characterName ?? rawCharacter.name ?? ''),
     characterDescription: String(rawCharacter.description ?? rawCharacter.characterDescription ?? ''),
     characterLocation: characterLocation === null || characterLocation === undefined ? '' : String(characterLocation),
+    originalLocation: characterLocation === null || characterLocation === undefined ? '' : String(characterLocation),
     wanderer: Boolean(rawCharacter.wanderer),
+    contains: containsSource.map(Number).filter((itemId) => Number.isFinite(itemId)),
     image: {
       ...normalizedImage,
       previewDataUrl,
@@ -149,11 +154,27 @@ export function getCharactersInRoom(characters, roomId) {
     return []
   }
 
+
   return characters.filter((character) => Number(character.characterLocation) === Number(roomId))
 }
 
 export function getOverlayEligibleCharactersInRoom(characters, roomId) {
   return getCharactersInRoom(characters, roomId).filter((character) => isCharacterImageOverlayEligible(character.image))
+}
+
+export function getCarriedItemsForCharacter(character, items) {
+  if (!character || !Array.isArray(character.contains) || character.contains.length === 0 || !Array.isArray(items)) {
+    return []
+  }
+
+  const containedIds = new Set(character.contains.map(Number))
+  return items
+    .filter((item) => containedIds.has(Number(item.itemId)))
+    .map((item) => ({
+      itemId: item.itemId,
+      itemName: item.itemName,
+      itemDescription: item.itemDescription,
+    }))
 }
 
 export function getValidExits(room) {
@@ -202,13 +223,17 @@ export function findRoomById(rooms, roomId) {
   return rooms.find((room) => room.roomId === Number(roomId)) ?? null
 }
 
-export function wanderCharacters(rooms, characters, randomFn = Math.random) {
+export function wanderCharacters(rooms, characters, randomFn = Math.random, excludeCharacterId = null) {
   if (!Array.isArray(characters) || characters.length === 0) {
     return characters
   }
 
   return characters.map((character) => {
     if (!character?.wanderer) {
+      return character
+    }
+
+    if (excludeCharacterId !== null && excludeCharacterId !== undefined && Number(character.characterId) === Number(excludeCharacterId)) {
       return character
     }
 
@@ -275,3 +300,105 @@ export function buildMissedWandererLine(remainingCharacters, departedWandererNam
     line: `Oh! You just missed ${joinNames(departedWandererNames)}.`,
   }
 }
+
+const FOLLOW_REQUEST_PATTERN = /\b(follow|come with me|come along|accompany me|join me|walk with me)\b/i
+const FOLLOW_DISMISS_PATTERN = /\b(stop following|you can go|go on without me|leave me|dismiss|no longer need you|that('?ll| will) be all|go back|go on ahead)\b/i
+const FOLLOW_CONFIRM_PATTERN = /\b(yes|yeah|yep|sure|please do|do it|instead|swap|switch)\b/i
+const FOLLOW_DECLINE_PATTERN = /\b(no|nah|never mind|nevermind|keep|stay with|forget it)\b/i
+
+export function detectFollowRequestTarget(playerMessage, charactersInRoom) {
+  if (!playerMessage || !Array.isArray(charactersInRoom) || charactersInRoom.length === 0) {
+    return null
+  }
+
+  if (!FOLLOW_REQUEST_PATTERN.test(playerMessage)) {
+    return null
+  }
+
+  const lowerMessage = playerMessage.toLowerCase()
+  const matches = charactersInRoom.filter((character) =>
+    character?.characterName && lowerMessage.includes(character.characterName.toLowerCase()),
+  )
+
+  if (matches.length === 0) {
+    return charactersInRoom.length === 1 ? charactersInRoom[0] : null
+  }
+
+  return [...matches].sort((a, b) => b.characterName.length - a.characterName.length)[0]
+}
+
+export function detectFollowDismissRequest(playerMessage, followerCharacter) {
+  if (!playerMessage || !followerCharacter) {
+    return false
+  }
+
+  if (FOLLOW_DISMISS_PATTERN.test(playerMessage)) {
+    return true
+  }
+
+  const lowerMessage = playerMessage.toLowerCase()
+  return lowerMessage.includes(followerCharacter.characterName.toLowerCase()) && /\b(go|leave|stay|stop)\b/i.test(playerMessage)
+}
+
+export function isFollowConfirmation(playerMessage) {
+
+  return Boolean(playerMessage) && FOLLOW_CONFIRM_PATTERN.test(playerMessage) && !FOLLOW_DECLINE_PATTERN.test(playerMessage)
+}
+
+export function isFollowDecline(playerMessage) {
+  return Boolean(playerMessage) && FOLLOW_DECLINE_PATTERN.test(playerMessage)
+}
+
+export function buildAlreadyFollowingLine(currentFollowerName, requestedCharacterName) {
+  return {
+    speaker: currentFollowerName,
+    text: `It seems you already have ${currentFollowerName} following you. Do you want ${requestedCharacterName} instead?`,
+  }
+}
+
+const FOLLOW_ACKNOWLEDGEMENTS = ['Alright.', 'Ok.', 'Sure thing.', 'Very well.', "I'll come along."]
+
+function pickFollowAcknowledgement(characterName, randomFn = Math.random) {
+  const index = Math.floor(randomFn() * FOLLOW_ACKNOWLEDGEMENTS.length) % FOLLOW_ACKNOWLEDGEMENTS.length
+  return FOLLOW_ACKNOWLEDGEMENTS[index]
+}
+
+export function buildFollowJoinLine(characterName, randomFn = Math.random) {
+  return {
+    speaker: characterName,
+    text: pickFollowAcknowledgement(characterName, randomFn),
+  }
+}
+
+export function buildFollowStatusLine(characterName) {
+  return {
+    speaker: 'System',
+    text: `[${characterName} is now following you]`,
+  }
+}
+
+export function buildFollowDismissedStatusLine(characterName) {
+  return {
+    speaker: 'System',
+    text: `[${characterName} is no longer following you]`,
+  }
+}
+
+export function buildFollowDismissalLine(characterName) {
+  return {
+    speaker: characterName,
+    text: `Very well. ${characterName} nods and takes their leave.`,
+  }
+}
+
+export function buildFollowCancelLine(currentFollowerName) {
+  return {
+    speaker: currentFollowerName,
+    text: `${currentFollowerName} continues to accompany you.`,
+  }
+}
+
+export function buildFollowerRoomAnnouncement(characterName) {
+  return `${characterName} follows you into the room.`
+}
+
