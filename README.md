@@ -7,16 +7,19 @@ And as a side-hustle, it can generate a text-based adventure game. see:Text adve
 
 - Backend: .NET 10 Web API (`backend/Gonf.Api`)
 - Backend tests: xUnit (`backend/Gonf.Api.Tests`)
-- Frontend: React + Vite (`frontend`)
-- Frontend tests: Vitest + Testing Library
+- Generator frontend: React + Vite (`frontend`)
+- Player frontend: React + Vite (`frontend-player`)
+- Frontend tests: Vitest + Testing Library (both `frontend` and `frontend-player`)
 
 ## Repository Layout
 
-- `backend/Gonf.Api`: API implementation
+- `backend/Gonf.Api`: API implementation, including the conversation (`/api/conversation/turn`) and image endpoints
 - `backend/Gonf.Api.Tests`: backend unit tests
-- `frontend`: React application
-- `agents`: role definitions for BA, Lead, Backend Dev, Frontend Dev, QA
-- `docs`: operating model and templates
+- `backend/Gonf.Api/CHAT_PROVIDER_SETUP.md`: local LLM (Ollama) setup required for character conversation features
+- `frontend`: React application used to author/generate a Gonf JSON file
+- `frontend-player`: React application used to load and play a generated Gonf as a text adventure, including the conversation panel
+- `agents`: role definitions for BA, Lead, Backend Dev, Frontend Dev, QA (also mirrored under `.github/agents` for Copilot agent discovery)
+- `docs`: operating model and templates (see `docs/team-operating-model.md`)
 - `tickets`: project ticket artifacts
 - `.githooks/pre-commit`: commit quality gate script
 
@@ -61,10 +64,18 @@ Backend restore:
 dotnet restore Gonf.slnx
 ```
 
-Frontend install:
+Frontend install (generator UI):
 
 ```powershell
 Set-Location frontend
+npm install
+Set-Location ..
+```
+
+Frontend install (player app):
+
+```powershell
+Set-Location frontend-player
 npm install
 Set-Location ..
 ```
@@ -78,14 +89,23 @@ Set-Location backend/Gonf.Api
 dotnet run
 ```
 
-Frontend (UI):
+Frontend (generator UI):
 
 ```powershell
 Set-Location frontend
 npm run dev
 ```
 
-Frontend defaults to `http://localhost:5173` and backend defaults to `http://localhost:5131` in development.
+Frontend (player app):
+
+```powershell
+Set-Location frontend-player
+npm run dev
+```
+
+The generator UI defaults to `http://localhost:5173`, the player app defaults to `http://localhost:5174`, and the backend defaults to `http://localhost:5131` in development.
+
+> Character conversation, inventory-awareness, and speaker-color features in the player app require a configured chat provider. See [`backend/Gonf.Api/CHAT_PROVIDER_SETUP.md`](backend/Gonf.Api/CHAT_PROVIDER_SETUP.md) to set up a local Ollama instance. Without it, conversation requests will fail with `503 CHAT_PROVIDER_NOT_CONFIGURED`.
 
 ## 6) Run Tests
 
@@ -95,10 +115,17 @@ Backend tests:
 dotnet test Gonf.slnx --nologo
 ```
 
-Frontend tests:
+Frontend tests (generator UI):
 
 ```powershell
 Set-Location frontend
+npm run test:run
+```
+
+Frontend tests (player app):
+
+```powershell
+Set-Location frontend-player
 npm run test:run
 ```
 
