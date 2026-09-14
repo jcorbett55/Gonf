@@ -1,16 +1,17 @@
-# React + Vite
+# Gonf Generator (frontend)
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React + Vite application used to author and generate a Gonf JSON file (rooms, characters, items, and image controls). This is the authoring side of Gonf — to play a generated Gonf as a text adventure, use `frontend-player` instead.
 
-Currently, two official plugins are available:
+See the root [README.md](../README.md) for prerequisites, install, run, and test instructions.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Scripts
 
-## React Compiler
+- `npm run dev` — start the Vite dev server (default `http://localhost:5173`)
+- `npm run build` — production build
+- `npm run test:run` — run the Vitest suite once (CI-friendly)
+- `npm run lint` — run Oxlint
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Key Source Areas
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+- `src/GonfGenerator.jsx` — main authoring UI
+- `src/gonf/` — domain helpers for rooms, characters, items, image controls, and shared parsing/loading logic
