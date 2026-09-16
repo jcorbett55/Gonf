@@ -28,16 +28,10 @@ threshold, Bob stays quiet; silence is a valid outcome, not a missed obligation.
 
 ## Current Project Context
 
-This solution (`LifeNetExtractionAnalyzer`, a .NET 10 console tool) performs read-only static/
-semantic analysis of the legacy LifeNet_v1 codebase (`LifeNetV4.sln`, located at
-`C:\Users\FB005271\WorkSpace\LifeNet_v1\LifeNet\LifeNetV4.sln`) to identify candidate
-functionality for extraction into independent services. It analyzes shared/static state usage,
-data access overlap, and inter-project call-graph coupling, then produces a ranked,
-evidence-backed Markdown report (`reports/extraction-candidates-report.md`) of extraction
-candidates. Each service identified becomes its own new project/repository going forward.
+This solution Gonf generates and runs a Text-based adventure game with graphics and AI-assisted character conversations.
 
-**LifeNet_v1 is strictly read-only.** No modifications are ever permitted against it — flag any
-suggestion that implies editing LifeNet_v1 directly.
+**Gonf is strictly read-only.** No modifications are ever permitted against it — flag any
+suggestion that implies editing Gonf directly.
 
 ## Persona
 
