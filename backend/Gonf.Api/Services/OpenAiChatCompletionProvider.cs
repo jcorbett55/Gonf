@@ -300,8 +300,11 @@ public sealed partial class OpenAiChatCompletionProvider : IChatCompletionProvid
             request.Characters.Select(character => character.CharacterName),
             StringComparer.OrdinalIgnoreCase);
 
+        // Keep lines spoken by characters currently present, plus System lines (e.g. item-transfer
+        // confirmations like "[diamond transferred from Player to Reggie]") regardless of who is
+        // present, since those record authoritative world-state changes the model must not contradict.
         var relevantPreviousLines = request.PreviousLines
-            .Where(line => presentCharacterNames.Contains(line.Speaker))
+            .Where(line => presentCharacterNames.Contains(line.Speaker) || string.Equals(line.Speaker, "System", StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
         if (relevantPreviousLines.Length == 0)
@@ -313,7 +316,10 @@ public sealed partial class OpenAiChatCompletionProvider : IChatCompletionProvid
             "\n",
             relevantPreviousLines.Select(line => $"- {line.Speaker}: {line.Text}"));
 
-        return $"Things already said by these characters earlier in this playthrough (do not repeat these verbatim):\n{previousLines}\n\n";
+        return "Things already said or that already happened earlier in this playthrough (do not repeat character dialogue verbatim): \n" +
+            $"{previousLines}\n" +
+            "Lines spoken by \"System\" above are factual world-state events that have already happened (for example, an item being handed over). " +
+            "Treat those as settled and irreversible: characters must not act as if a completed System event is still undecided, still being negotiated, or has not happened yet, and must not offer, request, or bargain over an item that a System line already shows as transferred.\n\n";
     }
 
     private static string BuildUserPrompt(ConversationTurnRequest request)

@@ -30,7 +30,10 @@ import {
   parsePlayerCommand,
   buildHelpCommandLine,
   buildInventoryCommandLine,
+  buildGoalCommandLine,
   buildUnknownCommandLine,
+  deriveGoalCriteria,
+  isGoalComplete,
 } from './gonf/gonfEngine'
 import { directionLabels } from './gonf/shared'
 import { fetchConversationTurn } from './gonf/conversationClient'
@@ -113,6 +116,10 @@ function GonfPlayerApp() {
   const [followerCharacterId, setFollowerCharacterId] = useState(null)
   const [pendingFollowSwap, setPendingFollowSwap] = useState(null)
   const [playerItemIds, setPlayerItemIds] = useState([])
+  const [spokenCharacterIds, setSpokenCharacterIds] = useState(() => new Set())
+  const [completedGiveTransfers, setCompletedGiveTransfers] = useState([])
+  const [visitedRoomIds, setVisitedRoomIds] = useState(() => new Set())
+  const [hasWon, setHasWon] = useState(false)
   const conversationRoomKeyRef = useRef(null)
   const conversationMemoryRef = useRef([])
   const characterMemoryRef = useRef([])
@@ -145,6 +152,10 @@ function GonfPlayerApp() {
       setFollowerCharacterId(null)
       setPendingFollowSwap(null)
       setPlayerItemIds([])
+      setSpokenCharacterIds(new Set())
+      setCompletedGiveTransfers([])
+      setVisitedRoomIds(new Set([startingRoomId]))
+      setHasWon(false)
       conversationMemoryRef.current = []
       characterMemoryRef.current = []
     } catch (error) {
@@ -155,6 +166,10 @@ function GonfPlayerApp() {
       setFollowerCharacterId(null)
       setPendingFollowSwap(null)
       setPlayerItemIds([])
+      setSpokenCharacterIds(new Set())
+      setCompletedGiveTransfers([])
+      setVisitedRoomIds(new Set())
+      setHasWon(false)
       conversationMemoryRef.current = []
       characterMemoryRef.current = []
     }
@@ -219,12 +234,57 @@ function GonfPlayerApp() {
     })
   }
 
+  const recordGiveTransfer = (itemId, characterId) => {
+    setCompletedGiveTransfers((previousTransfers) => [
+      ...previousTransfers,
+      { itemId: Number(itemId), characterId: Number(characterId) },
+    ])
+  }
+
+  const markCharactersSpoken = (characterList) => {
+    if (!Array.isArray(characterList) || characterList.length === 0) {
+      return
+    }
+
+    setSpokenCharacterIds((previousSpoken) => {
+      const nextSpoken = new Set(previousSpoken)
+      characterList.forEach((character) => nextSpoken.add(Number(character.characterId)))
+      return nextSpoken
+    })
+  }
+
   const buildCharacterTransferPayload = (characters) =>
     (characters ?? []).map((character) => ({
       characterId: character.characterId,
       location: character.characterLocation,
       contains: character.contains ?? [],
     }))
+
+  const goalCriteria = useMemo(
+    () => (gonfData ? deriveGoalCriteria(gonfData.goal, gonfData.characters, gonfData.items, gonfData.rooms) : []),
+    [gonfData],
+  )
+
+  // Characters currently "with" the player: physically in the same room, or following.
+  const presentCharacterIds = useMemo(() => {
+    const ids = new Set(charactersInRoom.map((character) => Number(character.characterId)))
+    if (followerCharacterId != null) {
+      ids.add(Number(followerCharacterId))
+    }
+    return ids
+  }, [charactersInRoom, followerCharacterId])
+
+  useEffect(() => {
+    if (hasWon || goalCriteria.length === 0) {
+      return
+    }
+
+    if (
+      isGoalComplete(goalCriteria, spokenCharacterIds, completedGiveTransfers, visitedRoomIds, playerItemIds, presentCharacterIds)
+    ) {
+      setHasWon(true)
+    }
+  }, [goalCriteria, spokenCharacterIds, completedGiveTransfers, visitedRoomIds, playerItemIds, presentCharacterIds, hasWon])
 
   const narrationText = useMemo(() => {
     if (!currentRoom) {
@@ -278,6 +338,7 @@ function GonfPlayerApp() {
         setConversationLog(newEntries)
         conversationMemoryRef.current = appendConversationMemory(conversationMemoryRef.current, newEntries)
         characterMemoryRef.current = updatedCharacterMemory
+        markCharactersSpoken(nonFollowerCharactersInRoom)
       })
       .catch((error) => {
         if (cancelled) {
@@ -300,7 +361,7 @@ function GonfPlayerApp() {
     event.preventDefault()
 
     const trimmedMessage = conversationDraft.trim()
-    if (!trimmedMessage || !currentRoom || isConversationLoading) {
+    if (!trimmedMessage || !currentRoom || isConversationLoading || hasWon) {
       return
     }
 
@@ -315,6 +376,11 @@ function GonfPlayerApp() {
         setConversationLog([...nextLogWithPlayer, buildHelpCommandLine()])
       } else if (playerCommand === 'inventory') {
         setConversationLog([...nextLogWithPlayer, buildInventoryCommandLine(playerCarriedItems)])
+      } else if (playerCommand === 'goal') {
+        setConversationLog([
+          ...nextLogWithPlayer,
+          buildGoalCommandLine(goalCriteria, spokenCharacterIds, completedGiveTransfers, visitedRoomIds, playerItemIds, presentCharacterIds),
+        ])
       } else {
         setConversationLog([...nextLogWithPlayer, buildUnknownCommandLine()])
       }
@@ -403,6 +469,7 @@ function GonfPlayerApp() {
           roomItemLocations: [],
         })
         applyItemTransferResult(transferResult)
+        recordGiveTransfer(giveRequest.item.itemId, giveRequest.character.characterId)
         const statusLine = buildItemTransferStatusLine(giveRequest.item.itemName, 'Player', giveRequest.character.characterName)
         setConversationLog([...nextLogWithPlayer, statusLine])
         conversationMemoryRef.current = appendConversationMemory(conversationMemoryRef.current, [statusLine])
@@ -491,6 +558,7 @@ function GonfPlayerApp() {
       setConversationLog((previousLog) => [...previousLog, ...newEntries])
       conversationMemoryRef.current = appendConversationMemory(conversationMemoryRef.current, newEntries)
       characterMemoryRef.current = updatedCharacterMemory
+      markCharactersSpoken(charactersInRoom)
 
       const offeredItem = lines
         .map((line) => detectItemOfferInLine(line, charactersInRoom, gonfData.items))
@@ -526,7 +594,7 @@ function GonfPlayerApp() {
   }
 
   const onNavigate = (direction) => {
-    if (!currentRoom) {
+    if (!currentRoom || hasWon) {
       return
     }
 
@@ -563,6 +631,11 @@ function GonfPlayerApp() {
       }
     })
     setCurrentRoomId(targetRoomId)
+    setVisitedRoomIds((previousVisited) => {
+      const nextVisited = new Set(previousVisited)
+      nextVisited.add(Number(targetRoomId))
+      return nextVisited
+    })
   }
 
   if (!gonfData || !currentRoom) {
@@ -624,6 +697,7 @@ function GonfPlayerApp() {
             onClick={() => onNavigate(direction)}
             aria-label={`Go ${directionLabels[direction]}`}
             title={`Go ${directionLabels[direction]}`}
+            disabled={hasWon}
           >
             <DirectionIcon direction={direction} />
           </button>
@@ -688,13 +762,19 @@ function GonfPlayerApp() {
             value={conversationDraft}
             onChange={(event) => setConversationDraft(event.target.value)}
             placeholder={charactersInRoom.length > 0 ? 'Say something...' : 'Type a command, e.g. /inventory or /help...'}
-            disabled={isConversationLoading}
+            disabled={isConversationLoading || hasWon}
           />
-          <button type="submit" className="gp-conversation-send" disabled={isConversationLoading || !conversationDraft.trim()}>
+          <button type="submit" className="gp-conversation-send" disabled={isConversationLoading || hasWon || !conversationDraft.trim()}>
             {isConversationLoading ? 'Waiting...' : 'Send'}
           </button>
         </form>
       </section>
+
+      {hasWon && (
+        <div className="gp-win-overlay" role="alertdialog" aria-label="You won">
+          <p className="gp-win-overlay-text">YOU WON!</p>
+        </div>
+      )}
     </main>
   )
 }

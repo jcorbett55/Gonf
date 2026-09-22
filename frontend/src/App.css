@@ -359,6 +359,81 @@ th {
   width: fit-content;
 }
 
+.gg-goal-row {
+  margin-bottom: 0.75rem;
+}
+
+.gg-goal-field textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.gg-goal-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.gg-goal-hint {
+  position: relative;
+  display: inline-flex;
+  outline: none;
+}
+
+.gg-goal-hint-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: #4a5568;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: help;
+  user-select: none;
+}
+
+.gg-goal-hint-popup {
+  display: none;
+  position: absolute;
+  top: 1.4rem;
+  left: 0;
+  z-index: 20;
+  width: 22rem;
+  max-width: 60vw;
+  background: #1a202c;
+  color: #f7fafc;
+  border-radius: 0.5rem;
+  padding: 0.75rem 0.9rem;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  font-weight: 400;
+}
+
+.gg-goal-hint-popup strong {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.gg-goal-hint-popup ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.gg-goal-hint-popup li {
+  margin-bottom: 0.3rem;
+}
+
+.gg-goal-hint:hover .gg-goal-hint-popup,
+.gg-goal-hint:focus .gg-goal-hint-popup,
+.gg-goal-hint:focus-within .gg-goal-hint-popup {
+  display: block;
+}
+
 .gg-tab-strip button {
   border: 0;
   border-radius: 999px;

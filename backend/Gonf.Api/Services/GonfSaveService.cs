@@ -102,6 +102,7 @@ public static class GonfSaveService
                 format = "Gonf",
                 schemaVersion = "1.0",
                 gonfName = request.GonfName,
+                goal = request.Goal ?? string.Empty,
                 rooms = savedRooms,
                 items = savedItems,
                 characters = savedCharacters,

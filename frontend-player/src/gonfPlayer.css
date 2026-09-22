@@ -40,6 +40,25 @@
   gap: 1rem;
 }
 
+.gp-win-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 10, 20, 0.92);
+  z-index: 1000;
+}
+
+.gp-win-overlay-text {
+  font-size: 4rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: #ffd766;
+  text-shadow: 0 0 24px rgba(255, 215, 102, 0.6);
+  margin: 0;
+}
+
 .gp-room-image-frame {
   position: relative;
   border-radius: 12px;
