@@ -16,7 +16,8 @@ public sealed record PlayerSaveStateRequest(
     int CurrentRoomId,
     IReadOnlyList<PlayerSaveStateCharacterRequest> Characters,
     IReadOnlyDictionary<string, object?>? Flags = null,
-    IReadOnlyList<PlayerConversationEntryRequest>? ConversationHistory = null
+    IReadOnlyList<PlayerConversationEntryRequest>? ConversationHistory = null,
+    IReadOnlyList<CharacterMemoryEntry>? CharacterMemory = null
 );
 
 public sealed record PlayerSaveStateResponse(
@@ -26,5 +27,6 @@ public sealed record PlayerSaveStateResponse(
     IReadOnlyList<PlayerSaveStateCharacterRequest> Characters,
     IReadOnlyDictionary<string, object?> Flags,
     IReadOnlyList<PlayerConversationEntryRequest> ConversationHistory,
-    DateTimeOffset UpdatedUtc
+    DateTimeOffset UpdatedUtc,
+    IReadOnlyList<CharacterMemoryEntry>? CharacterMemory = null
 );

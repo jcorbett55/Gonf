@@ -104,6 +104,7 @@ function GonfPlayerApp() {
   const [pendingFollowSwap, setPendingFollowSwap] = useState(null)
   const conversationRoomKeyRef = useRef(null)
   const conversationMemoryRef = useRef([])
+  const characterMemoryRef = useRef([])
 
 
   const onFileChange = async (event) => {
@@ -133,6 +134,7 @@ function GonfPlayerApp() {
       setFollowerCharacterId(null)
       setPendingFollowSwap(null)
       conversationMemoryRef.current = []
+      characterMemoryRef.current = []
     } catch (error) {
       setLoadError(error?.message ?? 'Could not load this Gonf file. Please verify it is valid.')
       setGonfData(null)
@@ -141,6 +143,7 @@ function GonfPlayerApp() {
       setFollowerCharacterId(null)
       setPendingFollowSwap(null)
       conversationMemoryRef.current = []
+      characterMemoryRef.current = []
     }
   }
 
@@ -223,14 +226,16 @@ function GonfPlayerApp() {
       transcript: [],
       playerMessage: null,
       previousLines: conversationMemoryRef.current,
+      characterMemory: characterMemoryRef.current,
     })
-      .then((lines) => {
+      .then(({ lines, updatedCharacterMemory }) => {
         if (cancelled) {
           return
         }
         const newEntries = lines.map((line) => ({ speaker: line.speaker, text: line.text }))
         setConversationLog(newEntries)
         conversationMemoryRef.current = appendConversationMemory(conversationMemoryRef.current, newEntries)
+        characterMemoryRef.current = updatedCharacterMemory
       })
       .catch((error) => {
         if (cancelled) {
@@ -356,7 +361,7 @@ function GonfPlayerApp() {
     setIsConversationLoading(true)
 
     try {
-      const lines = await fetchConversationTurn({
+      const { lines, updatedCharacterMemory } = await fetchConversationTurn({
         roomName: currentRoom.roomName,
         roomDescription: currentRoom.roomDescription,
         characters: charactersInRoom,
@@ -364,11 +369,13 @@ function GonfPlayerApp() {
         transcript: [...transcriptSoFar, { speaker: 'Player', text: trimmedMessage }],
         playerMessage: trimmedMessage,
         previousLines: conversationMemoryRef.current,
+        characterMemory: characterMemoryRef.current,
       })
 
       const newEntries = lines.map((line) => ({ speaker: line.speaker, text: line.text }))
       setConversationLog((previousLog) => [...previousLog, ...newEntries])
       conversationMemoryRef.current = appendConversationMemory(conversationMemoryRef.current, newEntries)
+      characterMemoryRef.current = updatedCharacterMemory
     } catch (error) {
       setConversationError(error?.message ?? 'Could not reach the conversation service.')
     } finally {

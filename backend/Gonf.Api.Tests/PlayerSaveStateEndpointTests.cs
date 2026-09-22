@@ -88,4 +88,56 @@ public class PlayerSaveStateEndpointTests : IClassFixture<WebApplicationFactory<
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
+
+    [Fact]
+    public async Task GetSaveState_ForLegacySaveFileWithNoCharacterMemoryField_LoadsWithEmptyMemory()
+    {
+        using var client = _factory.CreateClient();
+        var gonfName = $"LegacySave_{Guid.NewGuid():N}";
+        var gonfDirectory = GonfDirectory(gonfName);
+        var savesDirectory = Path.Combine(gonfDirectory, "saves");
+
+        try
+        {
+            Directory.CreateDirectory(savesDirectory);
+
+            // Deliberately matches the pre-memory save shape: no "CharacterMemory" property at all.
+            // PlayerSaveStateService persists using default (PascalCase, case-sensitive) JSON
+            // options, so on-disk files use the record's PascalCase property names.
+            var legacyJson = """
+                {
+                  "GonfName": "%GONFNAME%",
+                  "SaveId": "default",
+                  "CurrentRoomId": 2,
+                  "Characters": [
+                    { "CharacterId": 1, "Location": "2" }
+                  ],
+                  "Flags": {},
+                  "ConversationHistory": [],
+                  "UpdatedUtc": "2024-01-01T00:00:00Z"
+                }
+                """.Replace("%GONFNAME%", gonfName);
+
+            var savePath = Path.Combine(savesDirectory, "default.json");
+            await File.WriteAllTextAsync(savePath, legacyJson);
+
+            var response = await client.GetAsync($"/api/gonf/{gonfName}/playstate/default");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+            var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
+            var data = payload.GetProperty("data");
+
+            Assert.Equal(2, data.GetProperty("currentRoomId").GetInt32());
+            Assert.True(data.TryGetProperty("characterMemory", out var characterMemory));
+            Assert.Equal(JsonValueKind.Array, characterMemory.ValueKind);
+            Assert.Equal(0, characterMemory.GetArrayLength());
+        }
+        finally
+        {
+            if (Directory.Exists(gonfDirectory))
+            {
+                Directory.Delete(gonfDirectory, recursive: true);
+            }
+        }
+    }
 }

@@ -38,6 +38,7 @@ public static class ConversationEndpoints
                 data = new
                 {
                     lines = result.Lines,
+                    updatedCharacterMemory = result.UpdatedCharacterMemory,
                 }
             }, statusCode: StatusCodes.Status200OK);
         })

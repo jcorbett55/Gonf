@@ -32,7 +32,16 @@ public sealed class PlayerSaveStateService
         }
 
         await using var stream = File.OpenRead(filePath);
-        return await JsonSerializer.DeserializeAsync<PlayerSaveStateResponse>(stream, SerializerOptions, cancellationToken);
+        var saveState = await JsonSerializer.DeserializeAsync<PlayerSaveStateResponse>(stream, SerializerOptions, cancellationToken);
+
+        // Legacy save files predate character memory support and have no "characterMemory" property
+        // at all; treat that as "no memories yet" rather than surfacing a null to callers.
+        if (saveState is { CharacterMemory: null })
+        {
+            saveState = saveState with { CharacterMemory = Array.Empty<CharacterMemoryEntry>() };
+        }
+
+        return saveState;
     }
 
     public async Task<PlayerSaveStateResponse> SaveAsync(
@@ -51,7 +60,8 @@ public sealed class PlayerSaveStateService
             Characters: request.Characters,
             Flags: request.Flags ?? new Dictionary<string, object?>(),
             ConversationHistory: request.ConversationHistory ?? Array.Empty<PlayerConversationEntryRequest>(),
-            UpdatedUtc: DateTimeOffset.UtcNow
+            UpdatedUtc: DateTimeOffset.UtcNow,
+            CharacterMemory: request.CharacterMemory ?? Array.Empty<CharacterMemoryEntry>()
         );
 
         var filePath = GetSaveFilePath(gonfName, saveId);

@@ -10,7 +10,8 @@ public sealed record ConversationCharacterInfo(
     int CharacterId,
     string CharacterName,
     string CharacterDescription,
-    IReadOnlyList<ConversationCharacterItemInfo>? CarriedItems = null
+    IReadOnlyList<ConversationCharacterItemInfo>? CarriedItems = null,
+    IReadOnlyList<CharacterMemoryEntry>? MemoryFacts = null
 );
 
 public sealed record ConversationTranscriptEntry(
@@ -24,7 +25,8 @@ public sealed record ConversationTurnRequest(
     IReadOnlyList<ConversationCharacterInfo> Characters,
     IReadOnlyList<ConversationTranscriptEntry>? Transcript,
     string? PlayerMessage,
-    IReadOnlyList<ConversationTranscriptEntry>? PreviousLines = null
+    IReadOnlyList<ConversationTranscriptEntry>? PreviousLines = null,
+    IReadOnlyList<CharacterMemoryEntry>? CharacterMemory = null
 );
 
 public sealed record ConversationLine(
@@ -36,5 +38,6 @@ public sealed record ConversationTurnResult(
     bool Success,
     IReadOnlyList<ConversationLine>? Lines,
     string? ErrorCode,
-    string? ErrorMessage
+    string? ErrorMessage,
+    IReadOnlyList<CharacterMemoryEntry>? UpdatedCharacterMemory = null
 );

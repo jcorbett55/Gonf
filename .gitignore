@@ -16,6 +16,7 @@ frontend-player/dist/
 # IDE
 .vscode/
 .idea/
+.vs/
 
 # OS
 .DS_Store
