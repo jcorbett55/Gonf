@@ -225,6 +225,7 @@
 }
 
 .gp-conversation-line-system {
+  white-space: pre-line;
   color: #9aa5b1;
   font-style: italic;
   font-size: 0.9em;

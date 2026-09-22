@@ -402,3 +402,196 @@ export function buildFollowerRoomAnnouncement(characterName) {
   return `${characterName} follows you into the room.`
 }
 
+const GIVE_TO_CHARACTER_PATTERN = /\b(here'?s?|here you go|take (?:this|it)|i'?ll give you|give you)\b/i
+const ACCEPT_TRANSFER_PATTERN = /\b(ok|okay|alright|sure|thanks|thank you)\b.*\b(i'?ll take (?:that|it|this)|take (?:that|it|this))\b|\bi'?ll take (?:that|it|this)\b/i
+const OFFER_ITEM_PATTERN =
+  /\b(here'?s?|here you go|take (?:this|it|that)|i'?ll give you|go ahead and take|hand(?:ing)? (?:it|that|this|over)|you can have|no harm in|i suppose (?:i can|there'?s)|fine,? (?:you can|here)|alright,? (?:you can|here)|i'?ll let you have)\b/i
+
+function findItemNameMatchInMessage(message, itemCandidates) {
+  if (!message || !Array.isArray(itemCandidates) || itemCandidates.length === 0) {
+    return null
+  }
+
+  const lowerMessage = message.toLowerCase()
+  const matches = itemCandidates.filter((item) => {
+    if (!item?.itemName) {
+      return false
+    }
+    const lowerItemName = item.itemName.toLowerCase()
+    if (lowerMessage.includes(lowerItemName)) {
+      return true
+    }
+    // Fall back to matching on the item's significant words (e.g. "pistol" matching
+    // ".22 pistol") so players do not have to type the exact authored item name.
+    const significantWords = lowerItemName.split(/\s+/).filter((word) => word.length > 2)
+    return significantWords.length > 0 && significantWords.some((word) => {
+      const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      return new RegExp(`\\b${escapedWord}\\b`, 'i').test(lowerMessage)
+    })
+  })
+
+  if (matches.length === 0) {
+    return null
+  }
+
+  return [...matches].sort((a, b) => b.itemName.length - a.itemName.length)[0]
+}
+
+/// <summary>
+/// Detects a player message intending to hand a carried item to a character present in the
+/// room, e.g. "here's the gun" or "take this key". Only matches items the player is actually
+/// carrying, and only when exactly one character is present to receive it (ambiguous multi-
+/// character rooms are left undetected to avoid guessing the wrong recipient).
+/// </summary>
+export function detectItemGiveToCharacterRequest(playerMessage, playerCarriedItems, charactersInRoom) {
+  if (!playerMessage || !Array.isArray(charactersInRoom) || charactersInRoom.length !== 1) {
+    return null
+  }
+
+  if (!GIVE_TO_CHARACTER_PATTERN.test(playerMessage)) {
+    return null
+  }
+
+  const matchedItem = findItemNameMatchInMessage(playerMessage, playerCarriedItems)
+  if (!matchedItem) {
+    return null
+  }
+
+  return {
+    character: charactersInRoom[0],
+    item: matchedItem,
+  }
+}
+
+/// <summary>
+/// Detects a player message asking to receive/take a specific carried item from a character
+/// present in the room, e.g. "can I have the gun" or "give me the key". Only matches items the
+/// target character is actually carrying.
+/// </summary>
+export function detectItemRequestFromCharacter(playerMessage, charactersInRoom, items) {
+  if (!playerMessage || !Array.isArray(charactersInRoom) || charactersInRoom.length === 0) {
+    return null
+  }
+
+  if (!/\b(give me|can i have|hand (?:me|over)|i want|i'?ll take|let me have)\b/i.test(playerMessage)) {
+    return null
+  }
+
+  for (const character of charactersInRoom) {
+    const carriedItems = getCarriedItemsForCharacter(character, items)
+    const matchedItem = findItemNameMatchInMessage(playerMessage, carriedItems)
+    if (matchedItem) {
+      return { character, item: matchedItem }
+    }
+  }
+
+  return null
+}
+
+/// <summary>
+/// Scans a single generated conversation line (spoken by a character) for phrasing that offers
+/// a carried item to the player, e.g. "Here's the gun" or "Take this key". Returns the matched
+/// item only if the speaking character is actually carrying it.
+/// </summary>
+export function detectItemOfferInLine(line, charactersInRoom, items) {
+  if (!line?.text || !line?.speaker || !Array.isArray(charactersInRoom)) {
+    return null
+  }
+
+  if (!OFFER_ITEM_PATTERN.test(line.text)) {
+    return null
+  }
+
+  const speakingCharacter = charactersInRoom.find(
+    (character) => character.characterName.toLowerCase() === line.speaker.toLowerCase(),
+  )
+  if (!speakingCharacter) {
+    return null
+  }
+
+  const carriedItems = getCarriedItemsForCharacter(speakingCharacter, items)
+  const matchedItem = findItemNameMatchInMessage(line.text, carriedItems)
+  if (!matchedItem) {
+    return null
+  }
+
+  return { character: speakingCharacter, item: matchedItem }
+}
+
+/// <summary>
+/// Detects the player accepting a previously offered item, e.g. "ok, I'll take that" or
+/// "sure, thanks". Intended to be checked against the player's next message while a pending
+/// item offer from a character is outstanding.
+/// </summary>
+export function isItemOfferAcceptance(playerMessage) {
+  return Boolean(playerMessage) && ACCEPT_TRANSFER_PATTERN.test(playerMessage)
+}
+
+export function buildItemTransferStatusLine(itemName, fromDescription, toDescription) {
+  return {
+    speaker: 'System',
+    text: `[${itemName} transferred from ${fromDescription} to ${toDescription}]`,
+  }
+}
+
+const PLAYER_COMMAND_ALIASES = {
+  help: 'help',
+  h: 'help',
+  inventory: 'inventory',
+  inv: 'inventory',
+  i: 'inventory',
+}
+
+/// <summary>
+/// Parses a player message as a slash command (e.g. "/inventory", "/help"), returning the
+/// canonical command name or null if the message is not a recognized command. Messages that
+/// merely begin with '/' but do not match a known command/alias are also treated as
+/// unrecognized so the caller can show a helpful error rather than silently ignoring input.
+/// </summary>
+export function parsePlayerCommand(playerMessage) {
+  if (!playerMessage) {
+    return null
+  }
+
+  const match = /^\/(\w+)\b/.exec(playerMessage.trim())
+  if (!match) {
+    return null
+  }
+
+  const alias = match[1].toLowerCase()
+  return PLAYER_COMMAND_ALIASES[alias] ?? 'unknown'
+}
+
+export function buildHelpCommandLine() {
+  return {
+    speaker: 'System',
+    text: [
+      'Available commands:',
+      '/help - show this list',
+      '/inventory (or /inv, /i) - list items you are carrying',
+    ].join('\n'),
+  }
+}
+
+export function buildInventoryCommandLine(playerCarriedItems) {
+  if (!Array.isArray(playerCarriedItems) || playerCarriedItems.length === 0) {
+    return {
+      speaker: 'System',
+      text: 'Inventory: you are not carrying anything',
+    }
+  }
+
+  const itemNames = playerCarriedItems.map((item) => item.itemName).filter(Boolean)
+  return {
+    speaker: 'System',
+    text: ['Inventory:', ...itemNames].join('\n'),
+  }
+}
+
+export function buildUnknownCommandLine() {
+  return {
+    speaker: 'System',
+    text: "[Unknown command. Type /help to see available commands.]",
+  }
+}
+

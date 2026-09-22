@@ -22,9 +22,19 @@ import {
   buildFollowerRoomAnnouncement,
   buildFollowStatusLine,
   buildFollowDismissedStatusLine,
+  getCarriedItemsForCharacter,
+  detectItemGiveToCharacterRequest,
+  detectItemRequestFromCharacter,
+  detectItemOfferInLine,
+  buildItemTransferStatusLine,
+  parsePlayerCommand,
+  buildHelpCommandLine,
+  buildInventoryCommandLine,
+  buildUnknownCommandLine,
 } from './gonf/gonfEngine'
 import { directionLabels } from './gonf/shared'
 import { fetchConversationTurn } from './gonf/conversationClient'
+import { postItemTransfer } from './gonf/itemTransferClient'
 
 const MAX_VISIBLE_ROOM_OVERLAYS = 4
 const MAX_CONVERSATION_MEMORY_ENTRIES = 16
@@ -102,6 +112,7 @@ function GonfPlayerApp() {
   const [isConversationLoading, setIsConversationLoading] = useState(false)
   const [followerCharacterId, setFollowerCharacterId] = useState(null)
   const [pendingFollowSwap, setPendingFollowSwap] = useState(null)
+  const [playerItemIds, setPlayerItemIds] = useState([])
   const conversationRoomKeyRef = useRef(null)
   const conversationMemoryRef = useRef([])
   const characterMemoryRef = useRef([])
@@ -133,6 +144,7 @@ function GonfPlayerApp() {
       setMissedWandererMessage(null)
       setFollowerCharacterId(null)
       setPendingFollowSwap(null)
+      setPlayerItemIds([])
       conversationMemoryRef.current = []
       characterMemoryRef.current = []
     } catch (error) {
@@ -142,6 +154,7 @@ function GonfPlayerApp() {
       setMissedWandererMessage(null)
       setFollowerCharacterId(null)
       setPendingFollowSwap(null)
+      setPlayerItemIds([])
       conversationMemoryRef.current = []
       characterMemoryRef.current = []
     }
@@ -183,6 +196,35 @@ function GonfPlayerApp() {
   const hiddenOverlayCount = Math.max(0, overlayCharacters.length - MAX_VISIBLE_ROOM_OVERLAYS)
 
   const validExits = useMemo(() => (currentRoom ? getValidExits(currentRoom) : []), [currentRoom])
+
+  const playerCarriedItems = useMemo(
+    () => (gonfData ? (gonfData.items ?? []).filter((item) => playerItemIds.includes(Number(item.itemId))) : []),
+    [gonfData, playerItemIds],
+  )
+
+  const applyItemTransferResult = (transferResult) => {
+    setPlayerItemIds(transferResult.playerItemIds ?? [])
+    setGonfData((previousGonfData) => {
+      if (!previousGonfData || !Array.isArray(transferResult.characters)) {
+        return previousGonfData
+      }
+      const updatedCharactersById = new Map(transferResult.characters.map((character) => [Number(character.characterId), character]))
+      return {
+        ...previousGonfData,
+        characters: previousGonfData.characters.map((character) => {
+          const updated = updatedCharactersById.get(Number(character.characterId))
+          return updated ? { ...character, contains: updated.contains ?? [] } : character
+        }),
+      }
+    })
+  }
+
+  const buildCharacterTransferPayload = (characters) =>
+    (characters ?? []).map((character) => ({
+      characterId: character.characterId,
+      location: character.characterLocation,
+      contains: character.contains ?? [],
+    }))
 
   const narrationText = useMemo(() => {
     if (!currentRoom) {
@@ -258,12 +300,31 @@ function GonfPlayerApp() {
     event.preventDefault()
 
     const trimmedMessage = conversationDraft.trim()
-    if (!trimmedMessage || !currentRoom || charactersInRoom.length === 0 || isConversationLoading) {
+    if (!trimmedMessage || !currentRoom || isConversationLoading) {
       return
     }
 
     setConversationDraft('')
     setConversationError('')
+
+    const playerCommand = parsePlayerCommand(trimmedMessage)
+    if (playerCommand) {
+      const nextLogWithPlayer = [...conversationLog, { speaker: 'Player', text: trimmedMessage }]
+
+      if (playerCommand === 'help') {
+        setConversationLog([...nextLogWithPlayer, buildHelpCommandLine()])
+      } else if (playerCommand === 'inventory') {
+        setConversationLog([...nextLogWithPlayer, buildInventoryCommandLine(playerCarriedItems)])
+      } else {
+        setConversationLog([...nextLogWithPlayer, buildUnknownCommandLine()])
+      }
+
+      return
+    }
+
+    if (charactersInRoom.length === 0) {
+      return
+    }
 
     if (pendingFollowSwap) {
       const nextLogWithPlayer = [...conversationLog, { speaker: 'Player', text: trimmedMessage }]
@@ -327,6 +388,60 @@ function GonfPlayerApp() {
       }
     }
 
+    const giveRequest = detectItemGiveToCharacterRequest(trimmedMessage, playerCarriedItems, charactersInRoom)
+    if (giveRequest) {
+      const nextLogWithPlayer = [...conversationLog, { speaker: 'Player', text: trimmedMessage }]
+
+      try {
+        const transferResult = await postItemTransfer({
+          itemId: giveRequest.item.itemId,
+          characterId: giveRequest.character.characterId,
+          toCharacter: true,
+          action: 'give',
+          playerItemIds,
+          characters: buildCharacterTransferPayload(gonfData.characters),
+          roomItemLocations: [],
+        })
+        applyItemTransferResult(transferResult)
+        const statusLine = buildItemTransferStatusLine(giveRequest.item.itemName, 'Player', giveRequest.character.characterName)
+        setConversationLog([...nextLogWithPlayer, statusLine])
+        conversationMemoryRef.current = appendConversationMemory(conversationMemoryRef.current, [statusLine])
+      } catch (error) {
+        setConversationLog(nextLogWithPlayer)
+        setConversationError(error?.message ?? 'Could not complete the item transfer.')
+      }
+      return
+    }
+
+    const requestFromCharacter = detectItemRequestFromCharacter(trimmedMessage, charactersInRoom, gonfData.items)
+    if (requestFromCharacter) {
+      const nextLogWithPlayer = [...conversationLog, { speaker: 'Player', text: trimmedMessage }]
+
+      try {
+        const transferResult = await postItemTransfer({
+          itemId: requestFromCharacter.item.itemId,
+          characterId: requestFromCharacter.character.characterId,
+          toCharacter: false,
+          action: 'give',
+          playerItemIds,
+          characters: buildCharacterTransferPayload(gonfData.characters),
+          roomItemLocations: [],
+        })
+        applyItemTransferResult(transferResult)
+        const statusLine = buildItemTransferStatusLine(
+          requestFromCharacter.item.itemName,
+          requestFromCharacter.character.characterName,
+          'Player',
+        )
+        setConversationLog([...nextLogWithPlayer, statusLine])
+        conversationMemoryRef.current = appendConversationMemory(conversationMemoryRef.current, [statusLine])
+      } catch (error) {
+        setConversationLog(nextLogWithPlayer)
+        setConversationError(error?.message ?? 'Could not complete the item transfer.')
+      }
+      return
+    }
+
     const followTarget = detectFollowRequestTarget(
       trimmedMessage,
       charactersInRoom.filter((character) => character.characterId !== followerCharacterId),
@@ -376,6 +491,33 @@ function GonfPlayerApp() {
       setConversationLog((previousLog) => [...previousLog, ...newEntries])
       conversationMemoryRef.current = appendConversationMemory(conversationMemoryRef.current, newEntries)
       characterMemoryRef.current = updatedCharacterMemory
+
+      const offeredItem = lines
+        .map((line) => detectItemOfferInLine(line, charactersInRoom, gonfData.items))
+        .find(Boolean)
+      if (offeredItem) {
+        try {
+          const transferResult = await postItemTransfer({
+            itemId: offeredItem.item.itemId,
+            characterId: offeredItem.character.characterId,
+            toCharacter: false,
+            action: 'give',
+            playerItemIds,
+            characters: buildCharacterTransferPayload(gonfData.characters),
+            roomItemLocations: [],
+          })
+          applyItemTransferResult(transferResult)
+          const statusLine = buildItemTransferStatusLine(
+            offeredItem.item.itemName,
+            offeredItem.character.characterName,
+            'Player',
+          )
+          setConversationLog((previousLog) => [...previousLog, statusLine])
+          conversationMemoryRef.current = appendConversationMemory(conversationMemoryRef.current, [statusLine])
+        } catch (error) {
+          setConversationError(error?.message ?? 'Could not complete the item transfer.')
+        }
+      }
     } catch (error) {
       setConversationError(error?.message ?? 'Could not reach the conversation service.')
     } finally {
@@ -495,66 +637,64 @@ function GonfPlayerApp() {
         </p>
       )}
 
-      {charactersInRoom.length > 0 && (
-        <section className="gp-conversation-panel" aria-label="Conversation">
-          <div className="gp-conversation-log">
-            {conversationLog.length === 0 && !isConversationLoading && !conversationError && (
-              <p className="gp-conversation-empty">...</p>
-            )}
-            {conversationLog.map((entry, index) => (
-              <p
-                key={`${entry.speaker}-${index}`}
-                className={
-                  entry.speaker === 'Player'
-                    ? 'gp-conversation-line gp-conversation-line-player'
-                    : entry.speaker === 'System'
-                      ? 'gp-conversation-line gp-conversation-line-system'
-                      : 'gp-conversation-line'
-                }
-                style={entry.speaker !== 'Player' && entry.speaker !== 'System' ? { color: speakerColorAssignments.get(entry.speaker) } : undefined}
-              >
-                {entry.speaker === 'System' ? entry.text : (
-                  <>
-                    <strong>{entry.speaker}:</strong> {entry.text}
-                  </>
-                )}
-              </p>
-            ))}
-            {isConversationLoading && (
-              <p className="gp-conversation-typing" aria-live="polite">
-                <span className="gp-typing-label">
-                  {charactersInRoom.length === 1
-                    ? `${charactersInRoom[0].characterName} is typing`
-                    : 'Someone is typing'}
-                </span>
-                <span className="gp-typing-dots">
-                  <span className="gp-typing-dot" />
-                  <span className="gp-typing-dot" />
-                  <span className="gp-typing-dot" />
-                </span>
-              </p>
-            )}
-            {conversationError && (
-              <p className="gp-conversation-error" role="alert">
-                {conversationError}
-              </p>
-            )}
-          </div>
-          <form className="gp-conversation-input-row" onSubmit={onSubmitConversation}>
-            <input
-              type="text"
-              className="gp-conversation-input"
-              value={conversationDraft}
-              onChange={(event) => setConversationDraft(event.target.value)}
-              placeholder="Say something..."
-              disabled={isConversationLoading}
-            />
-            <button type="submit" className="gp-conversation-send" disabled={isConversationLoading || !conversationDraft.trim()}>
-              {isConversationLoading ? 'Waiting...' : 'Send'}
-            </button>
-          </form>
-        </section>
-      )}
+      <section className="gp-conversation-panel" aria-label="Conversation">
+        <div className="gp-conversation-log">
+          {conversationLog.length === 0 && !isConversationLoading && !conversationError && (
+            <p className="gp-conversation-empty">...</p>
+          )}
+          {conversationLog.map((entry, index) => (
+            <p
+              key={`${entry.speaker}-${index}`}
+              className={
+                entry.speaker === 'Player'
+                  ? 'gp-conversation-line gp-conversation-line-player'
+                  : entry.speaker === 'System'
+                    ? 'gp-conversation-line gp-conversation-line-system'
+                    : 'gp-conversation-line'
+              }
+              style={entry.speaker !== 'Player' && entry.speaker !== 'System' ? { color: speakerColorAssignments.get(entry.speaker) } : undefined}
+            >
+              {entry.speaker === 'System' ? entry.text : (
+                <>
+                  <strong>{entry.speaker}:</strong> {entry.text}
+                </>
+              )}
+            </p>
+          ))}
+          {isConversationLoading && (
+            <p className="gp-conversation-typing" aria-live="polite">
+              <span className="gp-typing-label">
+                {charactersInRoom.length === 1
+                  ? `${charactersInRoom[0].characterName} is typing`
+                  : 'Someone is typing'}
+              </span>
+              <span className="gp-typing-dots">
+                <span className="gp-typing-dot" />
+                <span className="gp-typing-dot" />
+                <span className="gp-typing-dot" />
+              </span>
+            </p>
+          )}
+          {conversationError && (
+            <p className="gp-conversation-error" role="alert">
+              {conversationError}
+            </p>
+          )}
+        </div>
+        <form className="gp-conversation-input-row" onSubmit={onSubmitConversation}>
+          <input
+            type="text"
+            className="gp-conversation-input"
+            value={conversationDraft}
+            onChange={(event) => setConversationDraft(event.target.value)}
+            placeholder={charactersInRoom.length > 0 ? 'Say something...' : 'Type a command, e.g. /inventory or /help...'}
+            disabled={isConversationLoading}
+          />
+          <button type="submit" className="gp-conversation-send" disabled={isConversationLoading || !conversationDraft.trim()}>
+            {isConversationLoading ? 'Waiting...' : 'Send'}
+          </button>
+        </form>
+      </section>
     </main>
   )
 }

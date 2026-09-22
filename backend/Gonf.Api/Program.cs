@@ -25,6 +25,7 @@ app.MapCharacterImageEndpoints();
 app.MapItemImageEndpoints();
 app.MapPlayerSaveStateEndpoints();
 app.MapConversationEndpoints();
+app.MapItemTransferEndpoints();
 
 await app.RunAsync();
 

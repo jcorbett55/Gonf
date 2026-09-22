@@ -139,6 +139,7 @@ public sealed partial class OpenAiChatCompletionProvider : IChatCompletionProvid
                     : null)
                 .Where(line => line is not null)
                 .Select(line => line!)
+                .Distinct()
                 .ToArray();
 
             if (filteredLines.Length == 0)

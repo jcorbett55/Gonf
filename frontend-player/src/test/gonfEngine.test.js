@@ -10,6 +10,15 @@ import {
   wanderCharacters,
   getDepartedWandererNames,
   buildMissedWandererLine,
+  detectItemGiveToCharacterRequest,
+  detectItemRequestFromCharacter,
+  detectItemOfferInLine,
+  isItemOfferAcceptance,
+  buildItemTransferStatusLine,
+  parsePlayerCommand,
+  buildHelpCommandLine,
+  buildInventoryCommandLine,
+  buildUnknownCommandLine,
 } from '../gonf/gonfEngine'
 
 function buildPayload(overrides = {}) {
@@ -199,3 +208,119 @@ describe('gonfEngine', () => {
     expect(buildMissedWandererLine([{ characterId: 2, characterName: 'Sue' }], [], () => 0)).toBeNull()
   })
 })
+
+describe('item transfer detection', () => {
+  const karen = { characterId: 1, characterName: 'Karen', contains: [10] }
+  const gun = { itemId: 10, itemName: 'gun' }
+  const items = [gun]
+
+  it('detects a player giving a carried item to the sole character present', () => {
+    const result = detectItemGiveToCharacterRequest("here's the gun", [gun], [karen])
+    expect(result).toEqual({ character: karen, item: gun })
+  })
+
+  it('does not detect a give request when the item is not carried by the player', () => {
+    const result = detectItemGiveToCharacterRequest("here's the gun", [], [karen])
+    expect(result).toBeNull()
+  })
+
+  it('does not detect a give request when multiple characters are present', () => {
+    const sue = { characterId: 2, characterName: 'Sue', contains: [] }
+    const result = detectItemGiveToCharacterRequest("here's the gun", [gun], [karen, sue])
+    expect(result).toBeNull()
+  })
+
+  it('detects a player requesting an item a character is carrying', () => {
+    const result = detectItemRequestFromCharacter('can I have the gun', [karen], items)
+    expect(result).toEqual({ character: karen, item: gun })
+  })
+
+  it('does not detect a request for an item the character does not carry', () => {
+    const sue = { characterId: 2, characterName: 'Sue', contains: [] }
+    const result = detectItemRequestFromCharacter('can I have the gun', [sue], items)
+    expect(result).toBeNull()
+  })
+
+  it('detects an item offer in a generated conversation line', () => {
+    const line = { speaker: 'Karen', text: "Here's the gun, take it." }
+    const result = detectItemOfferInLine(line, [karen], items)
+    expect(result).toEqual({ character: karen, item: gun })
+  })
+
+  it('does not detect an item offer from a character who is not carrying it', () => {
+    const sue = { characterId: 2, characterName: 'Sue', contains: [] }
+    const line = { speaker: 'Sue', text: "Here's the gun, take it." }
+    const result = detectItemOfferInLine(line, [sue], items)
+    expect(result).toBeNull()
+  })
+
+  it('detects the player accepting a pending item offer', () => {
+    expect(isItemOfferAcceptance("ok, I'll take that")).toBe(true)
+    expect(isItemOfferAcceptance('no thanks')).toBe(false)
+  })
+
+  it('builds an item transfer status line', () => {
+    const line = buildItemTransferStatusLine('gun', 'Karen', 'Player')
+    expect(line).toEqual({ speaker: 'System', text: '[gun transferred from Karen to Player]' })
+  })
+})
+
+describe('player commands', () => {
+  it('parses /help and its alias', () => {
+    expect(parsePlayerCommand('/help')).toBe('help')
+    expect(parsePlayerCommand('/h')).toBe('help')
+  })
+
+  it('parses /inventory and its aliases', () => {
+    expect(parsePlayerCommand('/inventory')).toBe('inventory')
+    expect(parsePlayerCommand('/inv')).toBe('inventory')
+    expect(parsePlayerCommand('/i')).toBe('inventory')
+  })
+
+  it('is case-insensitive when parsing commands', () => {
+    expect(parsePlayerCommand('/HELP')).toBe('help')
+    expect(parsePlayerCommand('/Inv')).toBe('inventory')
+  })
+
+  it('returns unknown for an unrecognized slash command', () => {
+    expect(parsePlayerCommand('/dance')).toBe('unknown')
+  })
+
+  it('returns null for a plain conversational message', () => {
+    expect(parsePlayerCommand('hey karen, how are you?')).toBeNull()
+    expect(parsePlayerCommand('')).toBeNull()
+    expect(parsePlayerCommand(null)).toBeNull()
+  })
+
+  it('builds the help command line listing available commands', () => {
+    const line = buildHelpCommandLine()
+    expect(line.speaker).toBe('System')
+    expect(line.text).toContain('/help')
+    expect(line.text).toContain('/inventory')
+  })
+
+  it('puts each command on its own line in the help listing', () => {
+    const line = buildHelpCommandLine()
+    const lines = line.text.split('\n')
+    expect(lines.length).toBeGreaterThan(1)
+    expect(lines.some((entry) => entry.includes('/help'))).toBe(true)
+    expect(lines.some((entry) => entry.includes('/inventory'))).toBe(true)
+  })
+
+  it('builds an inventory command line listing carried items on separate lines', () => {
+    const line = buildInventoryCommandLine([{ itemId: 10, itemName: 'gun' }, { itemId: 11, itemName: 'key' }])
+    expect(line).toEqual({ speaker: 'System', text: 'Inventory:\ngun\nkey' })
+  })
+
+  it('builds an empty inventory command line when carrying nothing', () => {
+    expect(buildInventoryCommandLine([])).toEqual({ speaker: 'System', text: 'Inventory: you are not carrying anything' })
+    expect(buildInventoryCommandLine(null)).toEqual({ speaker: 'System', text: 'Inventory: you are not carrying anything' })
+  })
+
+  it('builds an unknown command line', () => {
+    const line = buildUnknownCommandLine()
+    expect(line.speaker).toBe('System')
+    expect(line.text).toContain('/help')
+  })
+})
+

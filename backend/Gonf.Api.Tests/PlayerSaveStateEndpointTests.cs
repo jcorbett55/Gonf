@@ -140,4 +140,53 @@ public class PlayerSaveStateEndpointTests : IClassFixture<WebApplicationFactory<
             }
         }
     }
+
+    [Fact]
+    public async Task GetSaveState_ForLegacySaveFileWithNoItemIdsField_LoadsWithEmptyInventory()
+    {
+        using var client = _factory.CreateClient();
+        var gonfName = $"LegacySaveNoItems_{Guid.NewGuid():N}";
+        var gonfDirectory = GonfDirectory(gonfName);
+        var savesDirectory = Path.Combine(gonfDirectory, "saves");
+
+        try
+        {
+            Directory.CreateDirectory(savesDirectory);
+
+            // Deliberately matches the pre-inventory save shape: no "ItemIds" property at all.
+            var legacyJson = """
+                {
+                  "GonfName": "%GONFNAME%",
+                  "SaveId": "default",
+                  "CurrentRoomId": 2,
+                  "Characters": [
+                    { "CharacterId": 1, "Location": "2" }
+                  ],
+                  "Flags": {},
+                  "ConversationHistory": [],
+                  "UpdatedUtc": "2024-01-01T00:00:00Z"
+                }
+                """.Replace("%GONFNAME%", gonfName);
+
+            var savePath = Path.Combine(savesDirectory, "default.json");
+            await File.WriteAllTextAsync(savePath, legacyJson);
+
+            var response = await client.GetAsync($"/api/gonf/{gonfName}/playstate/default");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+            var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
+            var data = payload.GetProperty("data");
+
+            Assert.True(data.TryGetProperty("itemIds", out var itemIds));
+            Assert.Equal(JsonValueKind.Array, itemIds.ValueKind);
+            Assert.Equal(0, itemIds.GetArrayLength());
+        }
+        finally
+        {
+            if (Directory.Exists(gonfDirectory))
+            {
+                Directory.Delete(gonfDirectory, recursive: true);
+            }
+        }
+    }
 }
