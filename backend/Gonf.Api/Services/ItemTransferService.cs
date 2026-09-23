@@ -47,6 +47,34 @@ public static class ItemTransferService
             return new TransferResult(false, playerItemIds, characters, roomItemLocations, MemoryFact: null);
         }
 
+        // Edge case: the item must actually exist somewhere in the current game state (the
+        // player's inventory, some character's Contains, or a room) - otherwise the request
+        // references an item the player/character never had, and must be refused rather than
+        // silently conjuring the item into existence at the destination. This also covers the
+        // "player attempts to give an item they don't have" case, since a give request for an
+        // item the player doesn't hold (and that isn't tracked anywhere else either) fails here.
+        var itemExistsSomewhere = playerItemIds.Contains(itemId)
+            || characters.Any(character => (character.Contains ?? Array.Empty<int>()).Contains(itemId))
+            || roomItemLocations.Any(location => location.ItemId == itemId);
+
+        if (!itemExistsSomewhere)
+        {
+            return new TransferResult(false, playerItemIds, characters, roomItemLocations, MemoryFact: null);
+        }
+
+        // Edge case: when taking an item from a character (character-to-player), that specific
+        // character must actually currently hold the item - requesting an item from a character
+        // who doesn't have it must be refused.
+        if (!toCharacter)
+        {
+            var sourceCharacter = characters.FirstOrDefault(character => character.CharacterId == characterId);
+            var characterHasItem = sourceCharacter is not null && (sourceCharacter.Contains ?? Array.Empty<int>()).Contains(itemId);
+            if (!characterHasItem)
+            {
+                return new TransferResult(false, playerItemIds, characters, roomItemLocations, MemoryFact: null);
+            }
+        }
+
         var newPlayerItemIds = playerItemIds.Where(id => id != itemId).ToList();
         var newCharacters = characters
             .Select(character => character with

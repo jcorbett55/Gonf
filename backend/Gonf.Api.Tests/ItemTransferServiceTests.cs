@@ -137,4 +137,79 @@ public class ItemTransferServiceTests
             + result.RoomItemLocations.Count(location => location.ItemId == 7);
         Assert.Equal(1, occurrences);
     }
+
+    [Fact]
+    public void Transfer_PlayerGivesItemTheyDoNotHave_IsRefusedAndStateUnchanged()
+    {
+        var playerItemIds = new[] { 8 };
+        var characters = new[]
+        {
+            new PlayerSaveStateCharacterRequest(1, "2", Array.Empty<int>()),
+        };
+
+        var result = ItemTransferService.Transfer(
+            playerItemIds,
+            characters,
+            roomItemLocations: Array.Empty<PlayerSaveStateItemLocationRequest>(),
+            itemId: 7,
+            characterId: 1,
+            toCharacter: true,
+            action: "give",
+            timestampUtc: DateTimeOffset.UtcNow);
+
+        Assert.False(result.Allowed);
+        Assert.Null(result.MemoryFact);
+        Assert.Equal(playerItemIds, result.PlayerItemIds);
+        Assert.Empty(result.Characters.Single().Contains!);
+    }
+
+    [Fact]
+    public void Transfer_TakeItemFromCharacterWhoDoesNotHaveIt_IsRefusedAndStateUnchanged()
+    {
+        var playerItemIds = Array.Empty<int>();
+        var characters = new[]
+        {
+            new PlayerSaveStateCharacterRequest(1, "2", Array.Empty<int>()),
+        };
+
+        var result = ItemTransferService.Transfer(
+            playerItemIds,
+            characters,
+            roomItemLocations: Array.Empty<PlayerSaveStateItemLocationRequest>(),
+            itemId: 7,
+            characterId: 1,
+            toCharacter: false,
+            action: "take",
+            timestampUtc: DateTimeOffset.UtcNow);
+
+        Assert.False(result.Allowed);
+        Assert.Null(result.MemoryFact);
+        Assert.Empty(result.PlayerItemIds);
+    }
+
+    [Fact]
+    public void Transfer_TakeItemFromADifferentCharacterThanTheOneWhoHoldsIt_IsRefused()
+    {
+        var playerItemIds = Array.Empty<int>();
+        var characters = new[]
+        {
+            new PlayerSaveStateCharacterRequest(1, "2", new[] { 7 }),
+            new PlayerSaveStateCharacterRequest(2, "3", Array.Empty<int>()),
+        };
+
+        var result = ItemTransferService.Transfer(
+            playerItemIds,
+            characters,
+            roomItemLocations: Array.Empty<PlayerSaveStateItemLocationRequest>(),
+            itemId: 7,
+            characterId: 2,
+            toCharacter: false,
+            action: "take",
+            timestampUtc: DateTimeOffset.UtcNow);
+
+        Assert.False(result.Allowed);
+        Assert.Null(result.MemoryFact);
+        Assert.Empty(result.PlayerItemIds);
+        Assert.Contains(7, result.Characters.Single(c => c.CharacterId == 1).Contains!);
+    }
 }
