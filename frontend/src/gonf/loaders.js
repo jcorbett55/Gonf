@@ -36,6 +36,7 @@ export function parseLoadedGonf(payload) {
 
   return {
     gonfName: String(payload.gonfName ?? ''),
+    goal: String(payload.goal ?? ''),
     rooms,
     items,
     characters,

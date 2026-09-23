@@ -1,7 +1,7 @@
 import { API_BASE_URL } from './shared'
 import { getCarriedItemsForCharacter } from './gonfEngine'
 
-export async function fetchConversationTurn({ roomName, roomDescription, characters, items, transcript, playerMessage, previousLines }) {
+export async function fetchConversationTurn({ roomName, roomDescription, characters, items, transcript, playerMessage, previousLines, characterMemory }) {
   const response = await fetch(`${API_BASE_URL}/api/conversation/turn`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -13,10 +13,12 @@ export async function fetchConversationTurn({ roomName, roomDescription, charact
         characterName: character.characterName,
         characterDescription: character.characterDescription,
         carriedItems: getCarriedItemsForCharacter(character, items),
+        memoryFacts: (characterMemory ?? []).filter((fact) => fact.witnessedBy?.includes(character.characterId)),
       })),
       transcript: transcript ?? [],
       playerMessage: playerMessage ?? null,
       previousLines: previousLines ?? [],
+      characterMemory: characterMemory ?? [],
     }),
   })
 
@@ -27,5 +29,8 @@ export async function fetchConversationTurn({ roomName, roomDescription, charact
     throw new Error(message)
   }
 
-  return payload.data?.lines ?? []
+  return {
+    lines: payload.data?.lines ?? [],
+    updatedCharacterMemory: payload.data?.updatedCharacterMemory ?? characterMemory ?? [],
+  }
 }

@@ -46,6 +46,7 @@ import {
 import { parseLoadedGonf } from './gonf/loaders'
 export default function GonfGenerator() {
   const [gonfName, setGonfName] = useState('')
+  const [goal, setGoal] = useState('')
   const [rooms, setRooms] = useState([])
   const [items, setItems] = useState([])
   const [characters, setCharacters] = useState([])
@@ -236,6 +237,7 @@ export default function GonfGenerator() {
   const onCreateNewGonf = () => {
     // GONF-006C: this action intentionally clears all in-memory Gonf and map state.
     setGonfName('')
+    setGoal('')
     setRooms([])
     setItems([])
     setCharacters([])
@@ -1110,6 +1112,7 @@ export default function GonfGenerator() {
 
     const savePayload = {
       gonfName: gonfName.trim(),
+      goal: goal ?? '',
       rooms: finalizedRooms.map((room) => ({
         roomId: room.roomId,
         roomName: room.roomName,
@@ -1222,6 +1225,7 @@ export default function GonfGenerator() {
       const inferredName = loaded.gonfName || file.name.replace(/\.json$/i, '')
 
       setGonfName(inferredName)
+      setGoal(loaded.goal ?? '')
       setRooms(loaded.rooms)
       setItems(loaded.items)
       setCharacters(loaded.characters)
@@ -1284,6 +1288,37 @@ export default function GonfGenerator() {
           <button type="button" className="gg-save-gonf-top-button" onClick={onSaveGonf}>
             Save Gonf
           </button>
+        </div>
+
+        <div className="gg-goal-row">
+          <label className="gg-field gg-wide gg-goal-field">
+            <span className="gg-goal-label">
+              Goal
+              <span className="gg-goal-hint" tabIndex={0}>
+                <span className="gg-goal-hint-icon" aria-hidden="true">?</span>
+                <span className="gg-goal-hint-popup" role="tooltip">
+                  <strong>Tips for setting Goals:</strong>
+                  <ul>
+                    <li>If order matters, chain steps with "then": "Speak with Karen, then give the diamond to Karen".</li>
+                    <li>To require visiting a room: "Make it to the servant's quarters" or "Get to the attic".</li>
+                    <li>To require a room and a character together: "Reach the attic with Karen".</li>
+                    <li>To require talking to people: "Speak with Muffy, Sir Faulty, and Reggie".</li>
+                    <li>To require handing over an item: "Give the diamond to Karen".</li>
+                    <li>To require carrying an item at the end: "Hold the diamond" or "Keep the key".</li>
+                    <li>Use exact room, character, and item names as typed elsewhere in this Gonf.</li>
+                    <li>Separate independent steps with "then", "and then", periods, or new lines.</li>
+                    <li>Referencing a room/character/item that doesn't exist won't break saving — that step just can never be completed.</li>
+                  </ul>
+                </span>
+              </span>
+            </span>
+            <textarea
+              rows={3}
+              placeholder="e.g. Find the McGuffin and escape the hotel with Sue."
+              value={goal}
+              onChange={(event) => setGoal(event.target.value)}
+            />
+          </label>
         </div>
 
         {statusMessage && <output className="status status-info">{statusMessage}</output>}

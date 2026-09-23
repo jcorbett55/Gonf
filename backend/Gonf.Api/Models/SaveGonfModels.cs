@@ -4,7 +4,8 @@ public sealed record SaveGonfRequest(
     string GonfName,
     IReadOnlyList<SaveGonfRoomRequest> Rooms,
     IReadOnlyList<SaveGonfItemRequest>? Items = null,
-    IReadOnlyList<SaveGonfCharacterRequest>? Characters = null
+    IReadOnlyList<SaveGonfCharacterRequest>? Characters = null,
+    string? Goal = null
 );
 
 public sealed record SaveGonfRoomRequest(

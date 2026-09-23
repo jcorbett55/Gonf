@@ -129,6 +129,7 @@ export function parseLoadedGonf(payload) {
 
   return {
     gonfName,
+    goal: String(payload.goal ?? ''),
     rooms,
     characters,
     items,
@@ -400,5 +401,880 @@ export function buildFollowCancelLine(currentFollowerName) {
 
 export function buildFollowerRoomAnnouncement(characterName) {
   return `${characterName} follows you into the room.`
+}
+
+const GIVE_TO_CHARACTER_PATTERN = /\b(here'?s?|here you go|take (?:this|it)|i'?ll give you|give you)\b/i
+const ACCEPT_TRANSFER_PATTERN = /\b(ok|okay|alright|sure|thanks|thank you)\b.*\b(i'?ll take (?:that|it|this)|take (?:that|it|this))\b|\bi'?ll take (?:that|it|this)\b/i
+const OFFER_ITEM_PATTERN =
+  /\b(here'?s?|here you go|take (?:this|it|that)|i'?ll give you|go ahead and take|hand(?:ing)? (?:it|that|this|over)|you can have|no harm in|i suppose (?:i can|there'?s)|fine,? (?:you can|here)|alright,? (?:you can|here)|i'?ll let you have)\b/i
+
+function findItemNameMatchInMessage(message, itemCandidates) {
+  if (!message || !Array.isArray(itemCandidates) || itemCandidates.length === 0) {
+    return null
+  }
+
+  const lowerMessage = message.toLowerCase()
+  const matches = itemCandidates.filter((item) => {
+    if (!item?.itemName) {
+      return false
+    }
+    const lowerItemName = item.itemName.toLowerCase()
+    if (lowerMessage.includes(lowerItemName)) {
+      return true
+    }
+    // Fall back to matching on the item's significant words (e.g. "pistol" matching
+    // ".22 pistol") so players do not have to type the exact authored item name.
+    const significantWords = lowerItemName.split(/\s+/).filter((word) => word.length > 2)
+    return significantWords.length > 0 && significantWords.some((word) => {
+      const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      return new RegExp(`\\b${escapedWord}\\b`, 'i').test(lowerMessage)
+    })
+  })
+
+  if (matches.length === 0) {
+    return null
+  }
+
+  return [...matches].sort((a, b) => b.itemName.length - a.itemName.length)[0]
+}
+
+/// <summary>
+/// Detects a player message intending to hand a carried item to a character present in the
+/// room, e.g. "here's the gun" or "take this key". Only matches items the player is actually
+/// carrying, and only when exactly one character is present to receive it (ambiguous multi-
+/// character rooms are left undetected to avoid guessing the wrong recipient).
+/// </summary>
+export function detectItemGiveToCharacterRequest(playerMessage, playerCarriedItems, charactersInRoom) {
+  if (!playerMessage || !Array.isArray(charactersInRoom) || charactersInRoom.length !== 1) {
+    return null
+  }
+
+  if (!GIVE_TO_CHARACTER_PATTERN.test(playerMessage)) {
+    return null
+  }
+
+  const matchedItem = findItemNameMatchInMessage(playerMessage, playerCarriedItems)
+  if (!matchedItem) {
+    return null
+  }
+
+  return {
+    character: charactersInRoom[0],
+    item: matchedItem,
+  }
+}
+
+/// <summary>
+/// Detects a player message asking to receive/take a specific carried item from a character
+/// present in the room, e.g. "can I have the gun" or "give me the key". Only matches items the
+/// target character is actually carrying.
+/// </summary>
+export function detectItemRequestFromCharacter(playerMessage, charactersInRoom, items) {
+  if (!playerMessage || !Array.isArray(charactersInRoom) || charactersInRoom.length === 0) {
+    return null
+  }
+
+  if (!/\b(give me|can i have|hand (?:me|over)|i want|i'?ll take|let me have)\b/i.test(playerMessage)) {
+    return null
+  }
+
+  for (const character of charactersInRoom) {
+    const carriedItems = getCarriedItemsForCharacter(character, items)
+    const matchedItem = findItemNameMatchInMessage(playerMessage, carriedItems)
+    if (matchedItem) {
+      return { character, item: matchedItem }
+    }
+  }
+
+  return null
+}
+
+/// <summary>
+/// Scans a single generated conversation line (spoken by a character) for phrasing that offers
+/// a carried item to the player, e.g. "Here's the gun" or "Take this key". Returns the matched
+/// item only if the speaking character is actually carrying it.
+/// </summary>
+export function detectItemOfferInLine(line, charactersInRoom, items) {
+  if (!line?.text || !line?.speaker || !Array.isArray(charactersInRoom)) {
+    return null
+  }
+
+  if (!OFFER_ITEM_PATTERN.test(line.text)) {
+    return null
+  }
+
+  const speakingCharacter = charactersInRoom.find(
+    (character) => character.characterName.toLowerCase() === line.speaker.toLowerCase(),
+  )
+  if (!speakingCharacter) {
+    return null
+  }
+
+  const carriedItems = getCarriedItemsForCharacter(speakingCharacter, items)
+  const matchedItem = findItemNameMatchInMessage(line.text, carriedItems)
+  if (!matchedItem) {
+    return null
+  }
+
+  return { character: speakingCharacter, item: matchedItem }
+}
+
+/// <summary>
+/// Detects the player accepting a previously offered item, e.g. "ok, I'll take that" or
+/// "sure, thanks". Intended to be checked against the player's next message while a pending
+/// item offer from a character is outstanding.
+/// </summary>
+export function isItemOfferAcceptance(playerMessage) {
+  return Boolean(playerMessage) && ACCEPT_TRANSFER_PATTERN.test(playerMessage)
+}
+
+export function buildItemTransferStatusLine(itemName, fromDescription, toDescription) {
+  return {
+    speaker: 'System',
+    text: `[${itemName} transferred from ${fromDescription} to ${toDescription}]`,
+  }
+}
+
+const PLAYER_COMMAND_ALIASES = {
+  help: 'help',
+  h: 'help',
+  inventory: 'inventory',
+  inv: 'inventory',
+  i: 'inventory',
+  goal: 'goal',
+  g: 'goal',
+}
+
+/// <summary>
+/// Parses a player message as a slash command (e.g. "/inventory", "/help"), returning the
+/// canonical command name or null if the message is not a recognized command. Messages that
+/// merely begin with '/' but do not match a known command/alias are also treated as
+/// unrecognized so the caller can show a helpful error rather than silently ignoring input.
+/// </summary>
+export function parsePlayerCommand(playerMessage) {
+  if (!playerMessage) {
+    return null
+  }
+
+  const match = /^\/(\w+)\b/.exec(playerMessage.trim())
+  if (!match) {
+    return null
+  }
+
+  const alias = match[1].toLowerCase()
+  return PLAYER_COMMAND_ALIASES[alias] ?? 'unknown'
+}
+
+export function buildHelpCommandLine() {
+  return {
+    speaker: 'System',
+    text: [
+      'Available commands:',
+      '/help - show this list',
+      '/inventory (or /inv, /i) - list items you are carrying',
+      '/goal (or /g) - list the criteria needed to win, and which are already complete',
+    ].join('\n'),
+  }
+}
+
+/// <summary>
+/// Describes a single derived goal criterion in a short, human-readable form for the /goal command,
+/// e.g. "Speak with Karen", "Give the diamond to Karen", "Reach the Attic", "Hold the diamond".
+/// </summary>
+function describeGoalCriterion(criterion) {
+  switch (criterion.type) {
+    case 'speak':
+      return `Speak with ${criterion.characterName}`
+    case 'give':
+      return `Give the ${criterion.itemName} to ${criterion.characterName}`
+    case 'reach':
+      return `Reach ${criterion.roomName}`
+    case 'hold':
+      return `Hold the ${criterion.itemName}`
+    case 'present':
+      return `Have ${criterion.characterName} with you`
+    case 'followed':
+      return `Have ${criterion.characterName} follow you at least once`
+    case 'avoid':
+      if (criterion.subtype === 'give') {
+        return `Avoid giving the ${criterion.itemName} to ${criterion.characterName}`
+      }
+      return `Avoid speaking with ${criterion.characterName}`
+    case 'arrive': {
+      const parts = []
+      if (criterion.itemNames?.length) {
+        parts.push(`holding ${criterion.itemNames.join(' and ')}`)
+      }
+      if (criterion.characterNames?.length) {
+        parts.push(`${criterion.characterNames.join(' and ')} with you`)
+      }
+      const requirements = parts.length ? ` while ${parts.join(' and ')}` : ''
+      return `Reach ${criterion.roomName}${requirements}`
+    }
+    default:
+      return 'Unknown goal criterion'
+  }
+}
+
+/// <summary>
+/// Breaks a single criterion down into one or more independently-displayed checklist sub-items,
+/// each with its own "met" status. Most criterion types produce exactly one sub-item identical to
+/// describeGoalCriterion's output; a compound "arrive" criterion is expanded into a separate line
+/// per room/item/companion condition so the player can see which individual parts are still
+/// outstanding, even though all of them must be true simultaneously for the criterion itself (and
+/// the overall goal) to be considered complete.
+/// </summary>
+function describeGoalCriterionSubItems(criterion, spokenSet, transfers, visitedSet, heldSet, presentSet, currentRoomId, everFollowedSet) {
+  if (criterion.type !== 'arrive') {
+    return [
+      {
+        text: describeGoalCriterion(criterion),
+        isMet: isGoalCriterionMet(criterion, spokenSet, transfers, visitedSet, heldSet, presentSet, currentRoomId, everFollowedSet),
+      },
+    ]
+  }
+
+  const items = []
+  items.push({
+    text: `Be in ${criterion.roomName}`,
+    isMet: currentRoomId != null && Number(currentRoomId) === Number(criterion.roomId),
+  })
+  for (let i = 0; i < (criterion.itemIds ?? []).length; i += 1) {
+    items.push({
+      text: `Hold the ${criterion.itemNames[i]}`,
+      isMet: heldSet.has(criterion.itemIds[i]),
+    })
+  }
+  for (let i = 0; i < (criterion.characterIds ?? []).length; i += 1) {
+    items.push({
+      text: `Have ${criterion.characterNames[i]} with you`,
+      isMet: presentSet.has(criterion.characterIds[i]),
+    })
+  }
+  return items
+}
+
+
+function isGoalCriterionMet(criterion, spokenSet, transfers, visitedSet, heldSet, presentSet, currentRoomId, everFollowedSet) {
+  if (criterion.type === 'speak') {
+    return spokenSet.has(criterion.characterId)
+  }
+  if (criterion.type === 'reach') {
+    return visitedSet.has(criterion.roomId)
+  }
+  if (criterion.type === 'hold') {
+    return heldSet.has(criterion.itemId)
+  }
+  if (criterion.type === 'give') {
+    return transfers.some((transfer) => transfer.itemId === criterion.itemId && transfer.characterId === criterion.characterId)
+  }
+  if (criterion.type === 'present') {
+    return presentSet.has(criterion.characterId)
+  }
+  if (criterion.type === 'followed') {
+    return (everFollowedSet ?? new Set()).has(criterion.characterId)
+  }
+  if (criterion.type === 'avoid') {
+    if (criterion.subtype === 'give') {
+      return !transfers.some((transfer) => transfer.itemId === criterion.itemId && transfer.characterId === criterion.characterId)
+    }
+    return !spokenSet.has(criterion.characterId)
+  }
+  if (criterion.type === 'arrive') {
+    return isArriveCriterionMet(criterion, heldSet, presentSet, currentRoomId)
+  }
+  return false
+}
+
+/// <summary>
+/// Evaluates a compound "arrive" criterion: the player must be *currently* standing in the target
+/// room, while *currently* holding every listed item and having every listed companion character
+/// *currently* present (in the same room or following) - all simultaneously. Unlike "reach", this
+/// does not stay satisfied once achieved; if the player leaves the room, loses an item, or a
+/// companion departs, this reverts to unmet until all conditions line up again.
+/// </summary>
+function isArriveCriterionMet(criterion, heldSet, presentSet, currentRoomId) {
+  if (currentRoomId == null || Number(currentRoomId) !== Number(criterion.roomId)) {
+    return false
+  }
+  const itemsSatisfied = (criterion.itemIds ?? []).every((itemId) => heldSet.has(itemId))
+  const companionsSatisfied = (criterion.characterIds ?? []).every((characterId) => presentSet.has(characterId))
+  return itemsSatisfied && companionsSatisfied
+}
+
+/// <summary>
+/// Builds the /goal (or /g) command output: a checklist of every derived win-condition criterion
+/// with its current complete/incomplete status, so the player can see exactly what remains.
+/// Returns a friendly message when the Gonf has no (parseable) Goal text at all.
+/// </summary>
+export function buildGoalCommandLine(criteria, spokenCharacterIds, completedGiveTransfers, visitedRoomIds, currentPlayerItemIds, presentCharacterIds, currentRoomId, everFollowedCharacterIds) {
+  if (!Array.isArray(criteria) || criteria.length === 0) {
+    return {
+      speaker: 'System',
+      text: 'Goal: this Gonf has no defined win criteria.',
+    }
+  }
+
+  const spokenSet = spokenCharacterIds instanceof Set ? spokenCharacterIds : new Set(spokenCharacterIds ?? [])
+  const transfers = Array.isArray(completedGiveTransfers) ? completedGiveTransfers : []
+  const visitedSet = visitedRoomIds instanceof Set ? visitedRoomIds : new Set(visitedRoomIds ?? [])
+  const heldSet = currentPlayerItemIds instanceof Set ? currentPlayerItemIds : new Set(currentPlayerItemIds ?? [])
+  const presentSet = presentCharacterIds instanceof Set ? presentCharacterIds : new Set(presentCharacterIds ?? [])
+  const everFollowedSet = everFollowedCharacterIds instanceof Set ? everFollowedCharacterIds : new Set(everFollowedCharacterIds ?? [])
+
+  const criteriaLines = criteria.flatMap((criterion) => {
+    const subItems = describeGoalCriterionSubItems(criterion, spokenSet, transfers, visitedSet, heldSet, presentSet, currentRoomId, everFollowedSet)
+    return subItems.map(({ text, isMet }) => `${isMet ? '[x]' : '[ ]'} ${text}`)
+  })
+
+  return {
+    speaker: 'System',
+    text: ['Goal criteria:', ...criteriaLines].join('\n'),
+  }
+}
+
+export function buildInventoryCommandLine(playerCarriedItems) {
+  if (!Array.isArray(playerCarriedItems) || playerCarriedItems.length === 0) {
+    return {
+      speaker: 'System',
+      text: 'Inventory: you are not carrying anything',
+    }
+  }
+
+  const itemNames = playerCarriedItems.map((item) => item.itemName).filter(Boolean)
+  return {
+    speaker: 'System',
+    text: ['Inventory:', ...itemNames].join('\n'),
+  }
+}
+
+export function buildUnknownCommandLine() {
+  return {
+    speaker: 'System',
+    text: "[Unknown command. Type /help to see available commands.]",
+  }
+}
+
+/// <summary>
+/// Splits a freeform "Goal" text into independent clauses so each clause can be matched against
+/// a single criterion pattern. Clauses are separated by "then"/"and then"/"after that", sentence
+/// punctuation, newlines, a comma, or an "and" that immediately precedes another recognized goal
+/// verb (e.g. "reach the attic and speak with Karen", "while carrying the diamond, reach the
+/// attic"). Splitting on the verb keyword avoids breaking up "A, B, and C" name lists inside a
+/// single "speak with" clause. Leading conditional words ("while"/"when"/"if"/"once"/"after") are
+/// stripped from each clause since they don't change what must be true to satisfy it.
+/// </summary>
+function splitGoalClauses(goalText) {
+  const clauseVerbLookahead =
+    /(?=speak\b|talk\b|talked\b|spoken\b|spoke\b|give\b|make it\b|get to\b|reach\b|arrive\b|go to\b|hold\b|holding\b|carry\b|carrying\b|have\b|obtain\b|keep\b|possess\b)/i
+
+  // Guard common name/title abbreviations (Mr., Mrs., Ms., Dr., St.) so a trailing "." in the
+  // middle of a character name doesn't get mistaken for sentence-ending punctuation.
+  const protectedText = goalText.replace(/\b(Mr|Mrs|Ms|Dr|St)\./gi, '$1\u0000')
+
+  return protectedText
+    .split(/(?:,?\s*(?:then|and then|after that)\s+|[.;\n]+)/i)
+    .flatMap((segment) => segment.split(new RegExp(`\\s+and\\s+${clauseVerbLookahead.source}`, 'i')))
+    .flatMap((segment) => segment.split(new RegExp(`,\\s*${clauseVerbLookahead.source}`, 'i')))
+    .map((clause) =>
+      clause
+        .trim()
+        .replace(/^(?:[-*\u2022]|\d+[.)])\s+/, '')
+        .replace(/^(?:while|when|if|once|after)\s+/i, '')
+        .replace(/^and\s+/i, '')
+        .replace(/[,;]+$/, '')
+        .replace(/\u0000/g, '.')
+        .trim(),
+    )
+    .filter(Boolean)
+}
+
+/// <summary>
+/// Splits a freeform "Goal" text into top-level "sentences" only (separated by "then"/"and
+/// then"/"after that", sentence punctuation, or newlines) - NOT by commas or "and" before a verb.
+/// This coarser split is used to detect a compound "arrive" sentence (see tryParseArriveSentence)
+/// before the finer splitGoalClauses breakdown is attempted, since a compound arrival sentence's
+/// internal commas/"and"s describe conditions of the same criterion rather than separate criteria.
+/// </summary>
+function splitGoalSentences(goalText) {
+  const protectedText = goalText.replace(/\b(Mr|Mrs|Ms|Dr|St)\./gi, '$1\u0000')
+  return protectedText
+    .split(/(?:,?\s*(?:then|and then|after that)\s+|[.;\n]+)/i)
+    .map((sentence) =>
+      sentence
+        .replace(/\u0000/g, '.')
+        .trim()
+        .replace(/^(?:[-*\u2022]|\d+[.)])\s+/, '')
+        .trim(),
+    )
+    .filter(Boolean)
+}
+
+/// <summary>
+/// Attempts to parse a whole sentence as a compound "arrive" criterion: reach a room while
+/// simultaneously holding one or more items and/or having one or more companions present, e.g.
+/// "While carrying the diamond, reach the Staff Quarters with Mrs. Higgiebottom" or "While holding
+/// the diamond, and Karen following, reach the staff quarters". Requires a leading conditional
+/// word (while/when/if/once/after) introducing the condition list, ending in a
+/// reach/arrive/get-to/make-it-to/go-to/be-in/be-at ROOM clause, with an optional trailing
+/// "with CHARACTER(S)" companion phrase. Returns null if the sentence doesn't match this shape at
+/// all (so the caller falls back to independent per-clause parsing); returns an array (possibly
+/// empty, if the room or conditions can't be resolved) if the shape matches.
+/// </summary>
+function tryParseArriveSentence(sentence, lookups) {
+  const match = sentence.match(
+    /^(?:while|when|if|once|after)\s+(.+?),?\s+(?:and\s+)?(?:make it to|get to|reach|arrive at|arrive in|go to|be in|be at)\s+(?:the\s+)?(.+?)(?:\s+with\s+(.+))?$/i,
+  )
+  if (!match) {
+    return null
+  }
+
+  const [, conditionsText, roomNameCandidate, trailingCompanionsText] = match
+  const room = lookups.findRoomByName(roomNameCandidate)
+  if (!room) {
+    return []
+  }
+
+  const itemIds = []
+  const itemNames = []
+  const characterIds = []
+  const characterNames = []
+
+  const addItem = (item) => {
+    if (item && !itemIds.includes(item.itemId)) {
+      itemIds.push(item.itemId)
+      itemNames.push(item.itemName)
+    }
+  }
+  const addCharacter = (character) => {
+    if (character && !characterIds.includes(character.characterId)) {
+      characterIds.push(character.characterId)
+      characterNames.push(character.characterName)
+    }
+  }
+
+  const conditions = conditionsText
+    .split(/,|\band\b/i)
+    .map((condition) => condition.trim().replace(/[.!?]+$/, '').trim())
+    .filter(Boolean)
+
+  for (const condition of conditions) {
+    const holdMatch = condition.match(/^(?:be\s+)?(?:holding|hold|carry|carrying|have|having|obtain|keep|possess)\s+(?:the\s+)?(.+)$/i)
+    if (holdMatch) {
+      const item = lookups.findItemByName(holdMatch[1])
+      if (item) {
+        addItem(item)
+        continue
+      }
+      // Falls through: e.g. "have Karen following"/"have Karen with you" isn't an item, so try
+      // to resolve the remainder as a companion condition instead of silently dropping it.
+    }
+
+    const followMatch = condition.match(/^(?:have\s+|having\s+)?(.+?)\s+(?:is\s+)?following$/i)
+    if (followMatch) {
+      addCharacter(lookups.findCharacterByName(followMatch[1]))
+      continue
+    }
+
+    // Bare character name used as a condition (e.g. "with Karen present").
+    const presentMatch = condition.match(/^(?:have\s+|having\s+)?(.+?)\s+(?:is\s+)?present$/i)
+    if (presentMatch) {
+      addCharacter(lookups.findCharacterByName(presentMatch[1]))
+      continue
+    }
+
+    // Bare "have/having CHARACTER" with no trailing keyword (e.g. "have Karen with you").
+    const bareHaveMatch = condition.match(/^(?:have|having)\s+(.+)$/i)
+    addCharacter(lookups.findCharacterByName(bareHaveMatch ? bareHaveMatch[1] : condition))
+  }
+
+  if (trailingCompanionsText) {
+    for (const name of trailingCompanionsText
+      .split(/,|\band\b/i)
+      .map((n) => n.trim().replace(/[.!?]+$/, '').trim())
+      .filter(Boolean)) {
+      addCharacter(lookups.findCharacterByName(name))
+    }
+  }
+
+  return [
+    {
+      criterion: {
+        type: 'arrive',
+        roomId: room.roomId,
+        roomName: room.roomName,
+        itemIds,
+        itemNames,
+        characterIds,
+        characterNames,
+      },
+      key: `arrive:${room.roomId}:${[...itemIds].sort().join(',')}:${[...characterIds].sort().join(',')}`,
+    },
+  ]
+}
+
+/// <summary>
+/// Ordered list of clause matchers used by deriveGoalCriteria. Each matcher has a regex anchored
+/// to a full (trimmed) clause and a build function that turns the match plus resolved
+/// character/item/room lookups into zero or more criteria. Matchers are tried in order and the
+/// first one whose regex matches the clause wins; if the referenced character/item/room name(s)
+/// cannot be resolved against the Gonf's known entities, the clause simply yields no criteria
+/// (an unwinnable goal reference does not throw or otherwise fail parsing).
+/// </summary>
+const GOAL_CLAUSE_MATCHERS = [
+  {
+    // "talk to/speak with each (of the) character(s)/person/people (in the game), at least once"
+    // - a quantifier over every known character rather than an explicit name list. The "at least
+    // once" / "each time" suffix is accepted for authoring readability but not separately tracked;
+    // this just requires having spoken with every character at least once (same as "speak").
+    regex: /^(?:have\s+)?(?:talked|talk|spoken|speak)\s+(?:to|with)\s+each\s+(?:of\s+the\s+)?(?:character|characters|person|people)\b.*$/i,
+    build: (match, { getAllCharacters }) =>
+      getAllCharacters().map((character) => ({
+        criterion: { type: 'speak', characterId: character.characterId, characterName: character.characterName },
+        key: `speak:${character.characterId}`,
+      })),
+  },
+  {
+    // "have each of them follow you (at least once)" / "have each character follow you at least
+    // once" - a quantifier over every known character requiring each to have followed the player
+    // at some point (history-based, distinct from "present" which requires the companion to be
+    // currently with the player).
+    regex: /^(?:have\s+)?each\s+(?:of\s+them\s+|of\s+the\s+characters\s+|character\s+|characters\s+)?follow(?:s|ed)?\s+you\b.*$/i,
+    build: (match, { getAllCharacters }) =>
+      getAllCharacters().map((character) => ({
+        criterion: { type: 'followed', characterId: character.characterId, characterName: character.characterName },
+        key: `followed:${character.characterId}`,
+      })),
+  },
+  {
+    // "have CHARACTER follow you (at least once)" - history-based: once CHARACTER has followed
+    // the player at any point, this stays satisfied (distinct from "present", which requires the
+    // companion to be currently with the player right now).
+    regex: /^(?:have\s+)?(.+?)\s+follow(?:s|ed)?\s+you\b.*$/i,
+    build: (match, { findCharacterByName }) => {
+      const character = findCharacterByName(match[1])
+      if (!character) {
+        return []
+      }
+      return [
+        {
+          criterion: { type: 'followed', characterId: character.characterId, characterName: character.characterName },
+          key: `followed:${character.characterId}`,
+        },
+      ]
+    },
+  },
+  {
+    // "give ITEM to CHARACTER"
+    regex: /^give\s+(?:the\s+)?(.+?)\s+to\s+(.+)$/i,
+    build: (match, { findItemByName, findCharacterByName }) => {
+      const item = findItemByName(match[1])
+      const character = findCharacterByName(match[2])
+      if (!item || !character) {
+        return []
+      }
+      return [
+        {
+          criterion: {
+            type: 'give',
+            itemId: item.itemId,
+            itemName: item.itemName,
+            characterId: character.characterId,
+            characterName: character.characterName,
+          },
+          key: `give:${item.itemId}:${character.characterId}`,
+        },
+      ]
+    },
+  },
+  {
+    // "make it to/get to/reach/arrive at/arrive in/go to (the) ROOM (with CHARACTER)"
+    regex: /^(?:make it to|get to|reach|arrive at|arrive in|go to|be in|be at)\s+(?:the\s+)?(.+?)(?:\s+with\s+(.+))?$/i,
+    build: (match, { findRoomByName, findCharacterByName }) => {
+      const results = []
+      const room = findRoomByName(match[1])
+      if (room) {
+        results.push({ criterion: { type: 'reach', roomId: room.roomId, roomName: room.roomName }, key: `reach:${room.roomId}` })
+      }
+
+      const characterNameCandidate = match[2]?.trim()
+      if (characterNameCandidate) {
+        const character = findCharacterByName(characterNameCandidate)
+        if (character) {
+          results.push({
+            criterion: { type: 'present', characterId: character.characterId, characterName: character.characterName },
+            key: `present:${character.characterId}`,
+          })
+        }
+      }
+
+      return results
+    },
+  },
+  {
+    // "have CHARACTER with you" - CHARACTER must currently be present (in the same room or
+    // following), not merely spoken to at some point. Distinct from the "have (the) ITEM" hold
+    // pattern below - this one requires an explicit trailing "with you"/"with me" companion phrase.
+    regex: /^have\s+(.+?)\s+with\s+(?:you|me)$/i,
+    build: (match, { findCharacterByName }) => {
+      const character = findCharacterByName(match[1])
+      if (!character) {
+        return []
+      }
+      return [
+        {
+          criterion: { type: 'present', characterId: character.characterId, characterName: character.characterName },
+          key: `present:${character.characterId}`,
+        },
+      ]
+    },
+  },
+  {
+    // "(have) talked/talk/spoken/speak to/with CHARACTER about TOPIC" - topic text is accepted
+    // for authoring readability but is not separately tracked; this still just requires having
+    // spoken with the named character at least once. Requires an explicit "about ..." suffix so
+    // this doesn't shadow the plain "speak with A, B, and C" name-list matcher below.
+    regex: /^(?:have\s+)?(?:talked|talk|spoken|speak)\s+(?:to|with)\s+(.+?)\s+about\s+.+$/i,
+    build: (match, { findCharacterByName }) => {
+      const character = findCharacterByName(match[1])
+      if (!character) {
+        return []
+      }
+      return [
+        {
+          criterion: { type: 'speak', characterId: character.characterId, characterName: character.characterName },
+          key: `speak:${character.characterId}`,
+        },
+      ]
+    },
+  },
+  {
+    // "avoid speaking to/talking to CHARACTER" / "never speak with/talk to CHARACTER" - a negative
+    // condition: this criterion stays satisfied only as long as the player has never spoken with
+    // the named character. Once violated it can never be completed again (history-based, like
+    // "speak", but inverted).
+    regex: /^(?:avoid|never)\s+(?:speaking|talking|speak|talk)\s+(?:to|with)\s+(.+)$/i,
+    build: (match, { findCharacterByName }) => {
+      const character = findCharacterByName(match[1])
+      if (!character) {
+        return []
+      }
+      return [
+        {
+          criterion: {
+            type: 'avoid',
+            subtype: 'speak',
+            characterId: character.characterId,
+            characterName: character.characterName,
+          },
+          key: `avoid:speak:${character.characterId}`,
+        },
+      ]
+    },
+  },
+  {
+    // "avoid giving (the) ITEM to CHARACTER" / "never give (the) ITEM to CHARACTER" - a negative
+    // condition: this criterion stays satisfied only as long as the item has never been given to
+    // the named character.
+    regex: /^(?:avoid|never)\s+giv(?:e|ing)\s+(?:the\s+)?(.+?)\s+to\s+(.+)$/i,
+    build: (match, { findItemByName, findCharacterByName }) => {
+      const item = findItemByName(match[1])
+      const character = findCharacterByName(match[2])
+      if (!item || !character) {
+        return []
+      }
+      return [
+        {
+          criterion: {
+            type: 'avoid',
+            subtype: 'give',
+            itemId: item.itemId,
+            itemName: item.itemName,
+            characterId: character.characterId,
+            characterName: character.characterName,
+          },
+          key: `avoid:give:${item.itemId}:${character.characterId}`,
+        },
+      ]
+    },
+  },
+  {
+    // "ask CHARACTER about TOPIC" - treated as a synonym for "speak": this just requires having
+    // spoken with the named character at least once (no separate "asked" history is tracked).
+    regex: /^ask\s+(.+?)\s+about\s+.+$/i,
+    build: (match, { findCharacterByName }) => {
+      const character = findCharacterByName(match[1])
+      if (!character) {
+        return []
+      }
+      return [
+        {
+          criterion: { type: 'speak', characterId: character.characterId, characterName: character.characterName },
+          key: `speak:${character.characterId}`,
+        },
+      ]
+    },
+  },
+  {
+    // "hold/carry/have/obtain/keep/possess/take (the) ITEM" - live inventory state, can revert.
+    // "take" is treated as a synonym for "hold": both are satisfied only while the item is
+    // currently in the player's inventory (no separate "ever taken" history is tracked).
+    regex: /^(?:be\s+)?(?:holding|hold|carry|carrying|have|obtain|keep|possess|take|taking|taken)\s+(?:the\s+)?(.+)$/i,
+    build: (match, { findItemByName }) => {
+      const item = findItemByName(match[1])
+      if (!item) {
+        return []
+      }
+      return [{ criterion: { type: 'hold', itemId: item.itemId, itemName: item.itemName }, key: `hold:${item.itemId}` }]
+    },
+  },
+  {
+    // "speak with/talk to A, B, and C"
+    regex: /^(?:speak with|talk (?:with|to))\s+(.+)$/i,
+    build: (match, { findCharacterByName }) => {
+      const names = match[1]
+        .split(/,|\band\b/i)
+        .map((name) => name.trim())
+        .filter(Boolean)
+
+      const results = []
+      for (const name of names) {
+        const character = findCharacterByName(name)
+        if (character) {
+          results.push({
+            criterion: { type: 'speak', characterId: character.characterId, characterName: character.characterName },
+            key: `speak:${character.characterId}`,
+          })
+        }
+      }
+      return results
+    },
+  },
+]
+
+/// <summary>
+/// Derives trackable win-condition criteria from a freeform "Goal" text authored in the Gonf
+/// Generator, e.g. "Speak with Muffy, Sir Faulty, and Reggie, then give the diamond to Karen".
+/// The goal text is split into clauses (see splitGoalClauses) and each clause is matched against
+/// GOAL_CLAUSE_MATCHERS to produce zero or more criteria of type "speak", "give", "reach", or
+/// "hold". If a clause references a character/item/room name that does not exist in this Gonf
+/// (e.g. an authored goal mentions "the Alien" or "a guitar" that was never created), that clause
+/// is silently skipped: parsing never throws, the goal is simply harder or impossible to win.
+/// This is a heuristic parser, not a full NLP solution.
+/// </summary>
+export function deriveGoalCriteria(goalText, characters, items, rooms) {
+  if (!goalText || typeof goalText !== 'string') {
+    return []
+  }
+
+  const characterList = Array.isArray(characters) ? characters : []
+  const itemList = Array.isArray(items) ? items : []
+  const roomList = Array.isArray(rooms) ? rooms : []
+  const criteria = []
+  const seen = new Set()
+
+  const lookups = {
+    findCharacterByName: (name) =>
+      characterList.find((character) => character.characterName?.toLowerCase() === name?.toLowerCase().trim()),
+    findItemByName: (name) => itemList.find((item) => item.itemName?.toLowerCase() === name?.toLowerCase().trim()),
+    findRoomByName: (name) => roomList.find((room) => room.roomName?.toLowerCase() === name?.toLowerCase().trim()),
+    getAllCharacters: () => characterList,
+  }
+
+  for (const sentence of splitGoalSentences(goalText)) {
+    const arriveResults = tryParseArriveSentence(sentence, lookups)
+    if (arriveResults !== null) {
+      for (const { criterion, key } of arriveResults) {
+        if (!seen.has(key)) {
+          seen.add(key)
+          criteria.push(criterion)
+        }
+      }
+      continue
+    }
+
+    for (const clause of splitGoalClauses(sentence)) {
+      for (const matcher of GOAL_CLAUSE_MATCHERS) {
+        const match = clause.match(matcher.regex)
+        if (!match) {
+          continue
+        }
+
+        for (const { criterion, key } of matcher.build(match, lookups)) {
+          if (!seen.has(key)) {
+            seen.add(key)
+            criteria.push(criterion)
+          }
+        }
+        break
+      }
+    }
+  }
+
+  return criteria
+}
+
+/// <summary>
+/// Determines whether every derived goal criterion has been satisfied. "speak", "give", and
+/// "reach" criteria are history-based (once achieved they stay achieved), while "hold" criteria
+/// are evaluated against the player's *current* inventory, so they revert to unmet if the item is
+/// later lost, given away, or taken.
+/// spokenCharacterIds: Set/array of characterIds the player has held a conversation with.
+/// completedGiveTransfers: array of { itemId, characterId } transfers of an item to a character.
+/// visitedRoomIds: Set/array of roomIds the player has visited (defaults to none).
+/// currentPlayerItemIds: Set/array of itemIds the player is currently carrying (defaults to none).
+/// </summary>
+export function isGoalComplete(criteria, spokenCharacterIds, completedGiveTransfers, visitedRoomIds, currentPlayerItemIds, presentCharacterIds, currentRoomId, everFollowedCharacterIds) {
+  if (!Array.isArray(criteria) || criteria.length === 0) {
+    return false
+  }
+
+  const spokenSet = spokenCharacterIds instanceof Set ? spokenCharacterIds : new Set(spokenCharacterIds ?? [])
+  const transfers = Array.isArray(completedGiveTransfers) ? completedGiveTransfers : []
+  const visitedSet = visitedRoomIds instanceof Set ? visitedRoomIds : new Set(visitedRoomIds ?? [])
+  const heldSet = currentPlayerItemIds instanceof Set ? currentPlayerItemIds : new Set(currentPlayerItemIds ?? [])
+  const presentSet = presentCharacterIds instanceof Set ? presentCharacterIds : new Set(presentCharacterIds ?? [])
+  const everFollowedSet = everFollowedCharacterIds instanceof Set ? everFollowedCharacterIds : new Set(everFollowedCharacterIds ?? [])
+
+  return criteria.every((criterion) => {
+    if (criterion.type === 'speak') {
+      return spokenSet.has(criterion.characterId)
+    }
+
+    if (criterion.type === 'reach') {
+      return visitedSet.has(criterion.roomId)
+    }
+
+    if (criterion.type === 'hold') {
+      return heldSet.has(criterion.itemId)
+    }
+
+    if (criterion.type === 'give') {
+      return transfers.some(
+        (transfer) => transfer.itemId === criterion.itemId && transfer.characterId === criterion.characterId,
+      )
+    }
+
+    if (criterion.type === 'present') {
+      return presentSet.has(criterion.characterId)
+    }
+
+    if (criterion.type === 'followed') {
+      return everFollowedSet.has(criterion.characterId)
+    }
+
+    if (criterion.type === 'avoid') {
+      if (criterion.subtype === 'give') {
+        return !transfers.some((transfer) => transfer.itemId === criterion.itemId && transfer.characterId === criterion.characterId)
+      }
+      return !spokenSet.has(criterion.characterId)
+    }
+
+    if (criterion.type === 'arrive') {
+      return isArriveCriterionMet(criterion, heldSet, presentSet, currentRoomId)
+    }
+
+    return false
+  })
 }
 

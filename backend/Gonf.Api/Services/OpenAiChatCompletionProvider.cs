@@ -51,6 +51,8 @@ public sealed partial class OpenAiChatCompletionProvider : IChatCompletionProvid
 
         var systemPrompt = BuildSystemPrompt(request);
         var userPrompt = BuildUserPrompt(request);
+        _logger.LogWarning("DEBUG system prompt: {Prompt}", systemPrompt);
+        _logger.LogWarning("DEBUG incoming characterMemory count: {Count}", request.CharacterMemory?.Count ?? -1);
 
         var maxTokens = int.TryParse(_configuration["ChatProvider:MaxResponseTokens"], out var parsedMaxTokens)
             ? parsedMaxTokens
@@ -137,6 +139,7 @@ public sealed partial class OpenAiChatCompletionProvider : IChatCompletionProvid
                     : null)
                 .Where(line => line is not null)
                 .Select(line => line!)
+                .Distinct()
                 .ToArray();
 
             if (filteredLines.Length == 0)
@@ -147,7 +150,8 @@ public sealed partial class OpenAiChatCompletionProvider : IChatCompletionProvid
                 return new ConversationTurnResult(false, null, "CHAT_GENERATION_FAILED", "Conversation provider response did not reference any character present in the room.");
             }
 
-            return new ConversationTurnResult(true, filteredLines, null, null);
+            var updatedMemory = RecordTurnMemory(request, filteredLines);
+            return new ConversationTurnResult(true, filteredLines, null, null, updatedMemory);
         }
         catch (Exception ex)
         {
@@ -183,11 +187,12 @@ public sealed partial class OpenAiChatCompletionProvider : IChatCompletionProvid
         return partialMatches.Length == 1 ? partialMatches[0].CharacterName : null;
     }
 
-    private static string BuildSystemPrompt(ConversationTurnRequest request)
+    internal static string BuildSystemPrompt(ConversationTurnRequest request)
     {
         var characterList = string.Join(
             "\n",
-            request.Characters.Select(character => $"- {character.CharacterName}: {character.CharacterDescription}{BuildCarriedItemsSuffix(character)}"));
+            request.Characters.Select(character =>
+                $"- {character.CharacterName}: {character.CharacterDescription}{BuildCarriedItemsSuffix(character)}{BuildMemoryFactsSuffix(character)}"));
 
         return
             "You are role-playing as one or more characters inside a text adventure game. " +
@@ -204,6 +209,9 @@ public sealed partial class OpenAiChatCompletionProvider : IChatCompletionProvid
             "If the player asks who has a specific item, or otherwise references an item that a present character is carrying, that character should acknowledge having it in character (for example, producing it, patting a pocket, or holding it up) rather than denying having it. " +
             "Do not have a character claim to carry an item that is not listed for them, and do not have a character give away, drop, or hand over an item merely by mentioning it in dialogue. " +
             "If the player asks a character what they are carrying or holding and that character has no items listed in parentheses, that character must clearly and explicitly state, in character, that they are not carrying or holding anything of note - do not have them deflect, change the subject, or speak vaguely about possessions in general. " +
+            "Some characters listed above have remembered facts shown in square brackets after their description - these are things that character personally witnessed or was told about in-game. " +
+            "A character may only reference a remembered fact that is listed for them - never reference an event, item interaction, or world event that is not listed as one of their remembered facts, even if it appears elsewhere in this prompt for a different character. " +
+            "If a remembered fact for a character shows it has been asked about the same topic multiple times (a repeat count), that character should grow noticeably more impatient or annoyed each time, consistent with their described personality, rather than answering calmly every time as if it were the first time. " +
             "If information in 'Things already said' below covers what the player is asking about, do not repeat that exact line again - instead have the character briefly acknowledge they already said it (for example: I already told you..., Like I said...) or give a short new reaction, rather than restating the original line verbatim. " +
             $"Room: {request.RoomName}. Room description: {request.RoomDescription}.\n" +
             $"Characters present:\n{characterList}\n\n" +
@@ -223,6 +231,64 @@ public sealed partial class OpenAiChatCompletionProvider : IChatCompletionProvid
         return $" (carrying: {itemNames})";
     }
 
+    private static string BuildMemoryFactsSuffix(ConversationCharacterInfo character)
+    {
+        var recallableMemories = CharacterMemoryService.FilterMemoriesForCharacter(character.CharacterId, character.MemoryFacts);
+        if (recallableMemories.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var factDescriptions = recallableMemories.Select(memory => memory.IsCumulative
+            ? $"{memory.FactText} (asked {memory.Count} times)"
+            : memory.FactText);
+
+        return $" [remembers: {string.Join("; ", factDescriptions)}]";
+    }
+
+    /// <summary>
+    /// Records memory arising from this conversation turn: a shared PlayerStatement fact witnessed by
+    /// all present characters, plus a RepeatedTopicQuery counter update for each present character based
+    /// on the player's message. Merges the results into the caller-supplied existing memory using the
+    /// default overwrite-by-FactKey rule.
+    /// </summary>
+    private static IReadOnlyList<CharacterMemoryEntry>? RecordTurnMemory(
+        ConversationTurnRequest request,
+        IReadOnlyList<ConversationLine> filteredLines)
+    {
+        if (request.Characters is not { Count: > 0 })
+        {
+            return request.CharacterMemory;
+        }
+
+        var timestampUtc = DateTimeOffset.UtcNow;
+        var presentCharacterIds = request.Characters.Select(character => character.CharacterId).ToArray();
+
+        var newEntries = new List<CharacterMemoryEntry>();
+        newEntries.AddRange(CharacterMemoryService.RecordTurnMemories(presentCharacterIds, request.PlayerMessage, timestampUtc));
+
+        foreach (var characterId in presentCharacterIds)
+        {
+            var repeatedTopicEntry = CharacterMemoryService.RecordRepeatedTopicQuery(
+                characterId,
+                request.PlayerMessage,
+                request.CharacterMemory,
+                timestampUtc);
+
+            if (repeatedTopicEntry is not null)
+            {
+                newEntries.Add(repeatedTopicEntry);
+            }
+        }
+
+        if (newEntries.Count == 0)
+        {
+            return request.CharacterMemory;
+        }
+
+        return CharacterMemoryService.MergeMemories(request.CharacterMemory, newEntries);
+    }
+
     private static string BuildPreviousLinesSection(ConversationTurnRequest request)
     {
         if (request.PreviousLines is not { Count: > 0 })
@@ -234,8 +300,11 @@ public sealed partial class OpenAiChatCompletionProvider : IChatCompletionProvid
             request.Characters.Select(character => character.CharacterName),
             StringComparer.OrdinalIgnoreCase);
 
+        // Keep lines spoken by characters currently present, plus System lines (e.g. item-transfer
+        // confirmations like "[diamond transferred from Player to Reggie]") regardless of who is
+        // present, since those record authoritative world-state changes the model must not contradict.
         var relevantPreviousLines = request.PreviousLines
-            .Where(line => presentCharacterNames.Contains(line.Speaker))
+            .Where(line => presentCharacterNames.Contains(line.Speaker) || string.Equals(line.Speaker, "System", StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
         if (relevantPreviousLines.Length == 0)
@@ -247,7 +316,10 @@ public sealed partial class OpenAiChatCompletionProvider : IChatCompletionProvid
             "\n",
             relevantPreviousLines.Select(line => $"- {line.Speaker}: {line.Text}"));
 
-        return $"Things already said by these characters earlier in this playthrough (do not repeat these verbatim):\n{previousLines}\n\n";
+        return "Things already said or that already happened earlier in this playthrough (do not repeat character dialogue verbatim): \n" +
+            $"{previousLines}\n" +
+            "Lines spoken by \"System\" above are factual world-state events that have already happened (for example, an item being handed over). " +
+            "Treat those as settled and irreversible: characters must not act as if a completed System event is still undecided, still being negotiated, or has not happened yet, and must not offer, request, or bargain over an item that a System line already shows as transferred.\n\n";
     }
 
     private static string BuildUserPrompt(ConversationTurnRequest request)
