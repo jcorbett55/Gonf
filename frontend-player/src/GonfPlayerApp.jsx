@@ -119,6 +119,7 @@ function GonfPlayerApp() {
   const [spokenCharacterIds, setSpokenCharacterIds] = useState(() => new Set())
   const [completedGiveTransfers, setCompletedGiveTransfers] = useState([])
   const [visitedRoomIds, setVisitedRoomIds] = useState(() => new Set())
+  const [everFollowedCharacterIds, setEverFollowedCharacterIds] = useState(() => new Set())
   const [hasWon, setHasWon] = useState(false)
   const conversationRoomKeyRef = useRef(null)
   const conversationMemoryRef = useRef([])
@@ -155,6 +156,7 @@ function GonfPlayerApp() {
       setSpokenCharacterIds(new Set())
       setCompletedGiveTransfers([])
       setVisitedRoomIds(new Set([startingRoomId]))
+      setEverFollowedCharacterIds(new Set())
       setHasWon(false)
       conversationMemoryRef.current = []
       characterMemoryRef.current = []
@@ -169,6 +171,7 @@ function GonfPlayerApp() {
       setSpokenCharacterIds(new Set())
       setCompletedGiveTransfers([])
       setVisitedRoomIds(new Set())
+      setEverFollowedCharacterIds(new Set())
       setHasWon(false)
       conversationMemoryRef.current = []
       characterMemoryRef.current = []
@@ -288,6 +291,7 @@ function GonfPlayerApp() {
         playerItemIds,
         presentCharacterIds,
         currentRoomId,
+        everFollowedCharacterIds,
       )
     ) {
       setHasWon(true)
@@ -300,6 +304,7 @@ function GonfPlayerApp() {
     playerItemIds,
     presentCharacterIds,
     currentRoomId,
+    everFollowedCharacterIds,
     hasWon,
   ])
 
@@ -405,6 +410,7 @@ function GonfPlayerApp() {
             playerItemIds,
             presentCharacterIds,
             currentRoomId,
+            everFollowedCharacterIds,
           ),
         ])
       } else {
@@ -429,6 +435,11 @@ function GonfPlayerApp() {
         setConversationLog([...nextLogWithPlayer, dismissedLine, dismissedStatusLine, joinLine, joinStatusLine])
         conversationMemoryRef.current = appendConversationMemory(conversationMemoryRef.current, [dismissedLine, joinLine])
         setFollowerCharacterId(pendingFollowSwap.requestedCharacter.characterId)
+        setEverFollowedCharacterIds((previousIds) => {
+          const nextIds = new Set(previousIds)
+          nextIds.add(Number(pendingFollowSwap.requestedCharacter.characterId))
+          return nextIds
+        })
         setGonfData((previousGonfData) => {
           if (!previousGonfData) {
             return previousGonfData
@@ -559,6 +570,11 @@ function GonfPlayerApp() {
       setConversationLog([...nextLogWithPlayer, joinLine, joinStatusLine])
       conversationMemoryRef.current = appendConversationMemory(conversationMemoryRef.current, [joinLine])
       setFollowerCharacterId(followTarget.characterId)
+      setEverFollowedCharacterIds((previousIds) => {
+        const nextIds = new Set(previousIds)
+        nextIds.add(Number(followTarget.characterId))
+        return nextIds
+      })
       return
     }
 

@@ -593,6 +593,13 @@ function describeGoalCriterion(criterion) {
       return `Hold the ${criterion.itemName}`
     case 'present':
       return `Have ${criterion.characterName} with you`
+    case 'followed':
+      return `Have ${criterion.characterName} follow you at least once`
+    case 'avoid':
+      if (criterion.subtype === 'give') {
+        return `Avoid giving the ${criterion.itemName} to ${criterion.characterName}`
+      }
+      return `Avoid speaking with ${criterion.characterName}`
     case 'arrive': {
       const parts = []
       if (criterion.itemNames?.length) {
@@ -617,12 +624,12 @@ function describeGoalCriterion(criterion) {
 /// outstanding, even though all of them must be true simultaneously for the criterion itself (and
 /// the overall goal) to be considered complete.
 /// </summary>
-function describeGoalCriterionSubItems(criterion, spokenSet, transfers, visitedSet, heldSet, presentSet, currentRoomId) {
+function describeGoalCriterionSubItems(criterion, spokenSet, transfers, visitedSet, heldSet, presentSet, currentRoomId, everFollowedSet) {
   if (criterion.type !== 'arrive') {
     return [
       {
         text: describeGoalCriterion(criterion),
-        isMet: isGoalCriterionMet(criterion, spokenSet, transfers, visitedSet, heldSet, presentSet, currentRoomId),
+        isMet: isGoalCriterionMet(criterion, spokenSet, transfers, visitedSet, heldSet, presentSet, currentRoomId, everFollowedSet),
       },
     ]
   }
@@ -648,7 +655,7 @@ function describeGoalCriterionSubItems(criterion, spokenSet, transfers, visitedS
 }
 
 
-function isGoalCriterionMet(criterion, spokenSet, transfers, visitedSet, heldSet, presentSet, currentRoomId) {
+function isGoalCriterionMet(criterion, spokenSet, transfers, visitedSet, heldSet, presentSet, currentRoomId, everFollowedSet) {
   if (criterion.type === 'speak') {
     return spokenSet.has(criterion.characterId)
   }
@@ -663,6 +670,15 @@ function isGoalCriterionMet(criterion, spokenSet, transfers, visitedSet, heldSet
   }
   if (criterion.type === 'present') {
     return presentSet.has(criterion.characterId)
+  }
+  if (criterion.type === 'followed') {
+    return (everFollowedSet ?? new Set()).has(criterion.characterId)
+  }
+  if (criterion.type === 'avoid') {
+    if (criterion.subtype === 'give') {
+      return !transfers.some((transfer) => transfer.itemId === criterion.itemId && transfer.characterId === criterion.characterId)
+    }
+    return !spokenSet.has(criterion.characterId)
   }
   if (criterion.type === 'arrive') {
     return isArriveCriterionMet(criterion, heldSet, presentSet, currentRoomId)
@@ -691,7 +707,7 @@ function isArriveCriterionMet(criterion, heldSet, presentSet, currentRoomId) {
 /// with its current complete/incomplete status, so the player can see exactly what remains.
 /// Returns a friendly message when the Gonf has no (parseable) Goal text at all.
 /// </summary>
-export function buildGoalCommandLine(criteria, spokenCharacterIds, completedGiveTransfers, visitedRoomIds, currentPlayerItemIds, presentCharacterIds, currentRoomId) {
+export function buildGoalCommandLine(criteria, spokenCharacterIds, completedGiveTransfers, visitedRoomIds, currentPlayerItemIds, presentCharacterIds, currentRoomId, everFollowedCharacterIds) {
   if (!Array.isArray(criteria) || criteria.length === 0) {
     return {
       speaker: 'System',
@@ -704,9 +720,10 @@ export function buildGoalCommandLine(criteria, spokenCharacterIds, completedGive
   const visitedSet = visitedRoomIds instanceof Set ? visitedRoomIds : new Set(visitedRoomIds ?? [])
   const heldSet = currentPlayerItemIds instanceof Set ? currentPlayerItemIds : new Set(currentPlayerItemIds ?? [])
   const presentSet = presentCharacterIds instanceof Set ? presentCharacterIds : new Set(presentCharacterIds ?? [])
+  const everFollowedSet = everFollowedCharacterIds instanceof Set ? everFollowedCharacterIds : new Set(everFollowedCharacterIds ?? [])
 
   const criteriaLines = criteria.flatMap((criterion) => {
-    const subItems = describeGoalCriterionSubItems(criterion, spokenSet, transfers, visitedSet, heldSet, presentSet, currentRoomId)
+    const subItems = describeGoalCriterionSubItems(criterion, spokenSet, transfers, visitedSet, heldSet, presentSet, currentRoomId, everFollowedSet)
     return subItems.map(({ text, isMet }) => `${isMet ? '[x]' : '[ ]'} ${text}`)
   })
 
@@ -906,6 +923,48 @@ function tryParseArriveSentence(sentence, lookups) {
 /// </summary>
 const GOAL_CLAUSE_MATCHERS = [
   {
+    // "talk to/speak with each (of the) character(s)/person/people (in the game), at least once"
+    // - a quantifier over every known character rather than an explicit name list. The "at least
+    // once" / "each time" suffix is accepted for authoring readability but not separately tracked;
+    // this just requires having spoken with every character at least once (same as "speak").
+    regex: /^(?:have\s+)?(?:talked|talk|spoken|speak)\s+(?:to|with)\s+each\s+(?:of\s+the\s+)?(?:character|characters|person|people)\b.*$/i,
+    build: (match, { getAllCharacters }) =>
+      getAllCharacters().map((character) => ({
+        criterion: { type: 'speak', characterId: character.characterId, characterName: character.characterName },
+        key: `speak:${character.characterId}`,
+      })),
+  },
+  {
+    // "have each of them follow you (at least once)" / "have each character follow you at least
+    // once" - a quantifier over every known character requiring each to have followed the player
+    // at some point (history-based, distinct from "present" which requires the companion to be
+    // currently with the player).
+    regex: /^(?:have\s+)?each\s+(?:of\s+them\s+|of\s+the\s+characters\s+|character\s+|characters\s+)?follow(?:s|ed)?\s+you\b.*$/i,
+    build: (match, { getAllCharacters }) =>
+      getAllCharacters().map((character) => ({
+        criterion: { type: 'followed', characterId: character.characterId, characterName: character.characterName },
+        key: `followed:${character.characterId}`,
+      })),
+  },
+  {
+    // "have CHARACTER follow you (at least once)" - history-based: once CHARACTER has followed
+    // the player at any point, this stays satisfied (distinct from "present", which requires the
+    // companion to be currently with the player right now).
+    regex: /^(?:have\s+)?(.+?)\s+follow(?:s|ed)?\s+you\b.*$/i,
+    build: (match, { findCharacterByName }) => {
+      const character = findCharacterByName(match[1])
+      if (!character) {
+        return []
+      }
+      return [
+        {
+          criterion: { type: 'followed', characterId: character.characterId, characterName: character.characterName },
+          key: `followed:${character.characterId}`,
+        },
+      ]
+    },
+  },
+  {
     // "give ITEM to CHARACTER"
     regex: /^give\s+(?:the\s+)?(.+?)\s+to\s+(.+)$/i,
     build: (match, { findItemByName, findCharacterByName }) => {
@@ -990,8 +1049,77 @@ const GOAL_CLAUSE_MATCHERS = [
     },
   },
   {
-    // "hold/carry/have/obtain/keep/possess (the) ITEM" - live inventory state, can revert
-    regex: /^(?:be\s+)?(?:holding|hold|carry|carrying|have|obtain|keep|possess)\s+(?:the\s+)?(.+)$/i,
+    // "avoid speaking to/talking to CHARACTER" / "never speak with/talk to CHARACTER" - a negative
+    // condition: this criterion stays satisfied only as long as the player has never spoken with
+    // the named character. Once violated it can never be completed again (history-based, like
+    // "speak", but inverted).
+    regex: /^(?:avoid|never)\s+(?:speaking|talking|speak|talk)\s+(?:to|with)\s+(.+)$/i,
+    build: (match, { findCharacterByName }) => {
+      const character = findCharacterByName(match[1])
+      if (!character) {
+        return []
+      }
+      return [
+        {
+          criterion: {
+            type: 'avoid',
+            subtype: 'speak',
+            characterId: character.characterId,
+            characterName: character.characterName,
+          },
+          key: `avoid:speak:${character.characterId}`,
+        },
+      ]
+    },
+  },
+  {
+    // "avoid giving (the) ITEM to CHARACTER" / "never give (the) ITEM to CHARACTER" - a negative
+    // condition: this criterion stays satisfied only as long as the item has never been given to
+    // the named character.
+    regex: /^(?:avoid|never)\s+giv(?:e|ing)\s+(?:the\s+)?(.+?)\s+to\s+(.+)$/i,
+    build: (match, { findItemByName, findCharacterByName }) => {
+      const item = findItemByName(match[1])
+      const character = findCharacterByName(match[2])
+      if (!item || !character) {
+        return []
+      }
+      return [
+        {
+          criterion: {
+            type: 'avoid',
+            subtype: 'give',
+            itemId: item.itemId,
+            itemName: item.itemName,
+            characterId: character.characterId,
+            characterName: character.characterName,
+          },
+          key: `avoid:give:${item.itemId}:${character.characterId}`,
+        },
+      ]
+    },
+  },
+  {
+    // "ask CHARACTER about TOPIC" - treated as a synonym for "speak": this just requires having
+    // spoken with the named character at least once (no separate "asked" history is tracked).
+    regex: /^ask\s+(.+?)\s+about\s+.+$/i,
+    build: (match, { findCharacterByName }) => {
+      const character = findCharacterByName(match[1])
+      if (!character) {
+        return []
+      }
+      return [
+        {
+          criterion: { type: 'speak', characterId: character.characterId, characterName: character.characterName },
+          key: `speak:${character.characterId}`,
+        },
+      ]
+    },
+  },
+  {
+    // "hold/carry/have/obtain/keep/possess/take (the) ITEM" - live inventory state, can revert.
+    // "take" is treated as a synonym for "hold": both are satisfied only while the item is
+    // currently in the player's inventory (no separate "ever taken" history is tracked).
+    regex: /^(?:be\s+)?(?:holding|hold|carry|carrying|have|obtain|keep|possess|take|taking|taken)\s+(?:the\s+)?(.+)$/i,
     build: (match, { findItemByName }) => {
       const item = findItemByName(match[1])
       if (!item) {
@@ -1050,6 +1178,7 @@ export function deriveGoalCriteria(goalText, characters, items, rooms) {
       characterList.find((character) => character.characterName?.toLowerCase() === name?.toLowerCase().trim()),
     findItemByName: (name) => itemList.find((item) => item.itemName?.toLowerCase() === name?.toLowerCase().trim()),
     findRoomByName: (name) => roomList.find((room) => room.roomName?.toLowerCase() === name?.toLowerCase().trim()),
+    getAllCharacters: () => characterList,
   }
 
   for (const sentence of splitGoalSentences(goalText)) {
@@ -1095,7 +1224,7 @@ export function deriveGoalCriteria(goalText, characters, items, rooms) {
 /// visitedRoomIds: Set/array of roomIds the player has visited (defaults to none).
 /// currentPlayerItemIds: Set/array of itemIds the player is currently carrying (defaults to none).
 /// </summary>
-export function isGoalComplete(criteria, spokenCharacterIds, completedGiveTransfers, visitedRoomIds, currentPlayerItemIds, presentCharacterIds, currentRoomId) {
+export function isGoalComplete(criteria, spokenCharacterIds, completedGiveTransfers, visitedRoomIds, currentPlayerItemIds, presentCharacterIds, currentRoomId, everFollowedCharacterIds) {
   if (!Array.isArray(criteria) || criteria.length === 0) {
     return false
   }
@@ -1105,6 +1234,7 @@ export function isGoalComplete(criteria, spokenCharacterIds, completedGiveTransf
   const visitedSet = visitedRoomIds instanceof Set ? visitedRoomIds : new Set(visitedRoomIds ?? [])
   const heldSet = currentPlayerItemIds instanceof Set ? currentPlayerItemIds : new Set(currentPlayerItemIds ?? [])
   const presentSet = presentCharacterIds instanceof Set ? presentCharacterIds : new Set(presentCharacterIds ?? [])
+  const everFollowedSet = everFollowedCharacterIds instanceof Set ? everFollowedCharacterIds : new Set(everFollowedCharacterIds ?? [])
 
   return criteria.every((criterion) => {
     if (criterion.type === 'speak') {
@@ -1127,6 +1257,17 @@ export function isGoalComplete(criteria, spokenCharacterIds, completedGiveTransf
 
     if (criterion.type === 'present') {
       return presentSet.has(criterion.characterId)
+    }
+
+    if (criterion.type === 'followed') {
+      return everFollowedSet.has(criterion.characterId)
+    }
+
+    if (criterion.type === 'avoid') {
+      if (criterion.subtype === 'give') {
+        return !transfers.some((transfer) => transfer.itemId === criterion.itemId && transfer.characterId === criterion.characterId)
+      }
+      return !spokenSet.has(criterion.characterId)
     }
 
     if (criterion.type === 'arrive') {

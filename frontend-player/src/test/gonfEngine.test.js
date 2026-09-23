@@ -430,6 +430,80 @@ describe('goal criteria', () => {
     ])
   })
 
+  it('derives a "followed" criterion for "have CHARACTER follow you at least once"', () => {
+    const criteria = deriveGoalCriteria('have Muffy follow you at least once', characters, items)
+    expect(criteria).toEqual([{ type: 'followed', characterId: 1, characterName: 'Muffy' }])
+  })
+
+  it('derives the exact bullet-formatted goal reported by the user (bug regression)', () => {
+    const criteria = deriveGoalCriteria(
+      '- Speak with Muffy McSterling\n- Have each character follow you at least once\n- Give Rare Book to Reggie Winthrope III',
+      [
+        { characterId: 1, characterName: 'Muffy McSterling' },
+        { characterId: 2, characterName: 'Reggie Winthrope III' },
+      ],
+      [{ itemId: 20, itemName: 'Rare Book' }],
+    )
+    expect(criteria).toEqual(
+      expect.arrayContaining([
+        { type: 'speak', characterId: 1, characterName: 'Muffy McSterling' },
+        { type: 'followed', characterId: 1, characterName: 'Muffy McSterling' },
+        { type: 'followed', characterId: 2, characterName: 'Reggie Winthrope III' },
+        { type: 'give', itemId: 20, itemName: 'Rare Book', characterId: 2, characterName: 'Reggie Winthrope III' },
+      ]),
+    )
+    expect(criteria).toHaveLength(4)
+  })
+
+  it('derives speak and followed criteria for each character with an "each of the characters" style goal', () => {
+    const criteria = deriveGoalCriteria(
+      'Talk to each of the characters at least once, and have each of them follow you at least once.',
+      characters,
+      items,
+    )
+    expect(criteria).toEqual(
+      expect.arrayContaining([
+        { type: 'speak', characterId: 1, characterName: 'Muffy' },
+        { type: 'speak', characterId: 2, characterName: 'Sir Faulty' },
+        { type: 'speak', characterId: 3, characterName: 'Reggie' },
+        { type: 'speak', characterId: 4, characterName: 'Karen' },
+        { type: 'speak', characterId: 5, characterName: 'Mrs. Higgiebottom' },
+        { type: 'followed', characterId: 1, characterName: 'Muffy' },
+        { type: 'followed', characterId: 2, characterName: 'Sir Faulty' },
+        { type: 'followed', characterId: 3, characterName: 'Reggie' },
+        { type: 'followed', characterId: 4, characterName: 'Karen' },
+        { type: 'followed', characterId: 5, characterName: 'Mrs. Higgiebottom' },
+      ]),
+    )
+    expect(criteria).toHaveLength(10)
+  })
+
+  it('derives independent criteria for a real-world bullet goal mixing speak-all, follow-once, and give', () => {
+    const criteria = deriveGoalCriteria(
+      '- talk to each of the characters at least once\n- have Muffy follow you at least once\n- give diamond to Karen',
+      characters,
+      items,
+    )
+    expect(criteria).toEqual(
+      expect.arrayContaining([
+        { type: 'speak', characterId: 1, characterName: 'Muffy' },
+        { type: 'speak', characterId: 2, characterName: 'Sir Faulty' },
+        { type: 'speak', characterId: 3, characterName: 'Reggie' },
+        { type: 'speak', characterId: 4, characterName: 'Karen' },
+        { type: 'speak', characterId: 5, characterName: 'Mrs. Higgiebottom' },
+        { type: 'followed', characterId: 1, characterName: 'Muffy' },
+        { type: 'give', itemId: 10, itemName: 'diamond', characterId: 4, characterName: 'Karen' },
+      ]),
+    )
+    expect(criteria).toHaveLength(7)
+  })
+
+  it('reports a "followed" criterion complete only once the character has ever followed the player', () => {
+    const criteria = deriveGoalCriteria('have Muffy follow you at least once', characters, items)
+    expect(isGoalComplete(criteria, new Set(), [], new Set(), [], new Set(), null, new Set())).toBe(false)
+    expect(isGoalComplete(criteria, new Set(), [], new Set(), [], new Set(), null, new Set([1]))).toBe(true)
+  })
+
   it('derives criteria from a bullet-formatted goal list using "-" markers', () => {
     const criteria = deriveGoalCriteria(
       '- Speak with Muffy.\n- Give the diamond to Karen.\n- Hold the diamond.',
@@ -499,13 +573,55 @@ describe('goal criteria', () => {
     ])
   })
 
-  it('derives a compound arrive criterion from a comma-joined goal with a leading "while" conditional clause', () => {
-    const rooms = [{ roomId: 5, roomName: 'Staff Quarters' }]
-    const criteria = deriveGoalCriteria(
-      'While carrying the diamond, reach the Staff Quarters with Karen.',
-      characters,
-      items,
-      rooms,
+  it('derives a hold criterion for a "take" clause (take is a synonym for hold)', () => {
+    expect(deriveGoalCriteria('Take the diamond', characters, items)).toEqual([
+      { type: 'hold', itemId: 10, itemName: 'diamond' },
+    ])
+    expect(deriveGoalCriteria('Taking the diamond', characters, items)).toEqual([
+      { type: 'hold', itemId: 10, itemName: 'diamond' },
+    ])
+  })
+
+  it('derives a speak criterion for an "ask CHARACTER about TOPIC" clause (ask is a synonym for speak)', () => {
+    expect(deriveGoalCriteria('Ask Karen about the diamond', characters, items)).toEqual([
+      { type: 'speak', characterId: 4, characterName: 'Karen' },
+    ])
+  })
+
+  it('derives an avoid criterion for "avoid speaking to/never talk to CHARACTER"', () => {
+    expect(deriveGoalCriteria('Avoid speaking to Karen', characters, items)).toEqual([
+      { type: 'avoid', subtype: 'speak', characterId: 4, characterName: 'Karen' },
+    ])
+    expect(deriveGoalCriteria('Never talk to Karen', characters, items)).toEqual([
+      { type: 'avoid', subtype: 'speak', characterId: 4, characterName: 'Karen' },
+    ])
+  })
+
+  it('derives an avoid criterion for "avoid giving ITEM to CHARACTER"', () => {
+    expect(deriveGoalCriteria('Avoid giving the diamond to Karen', characters, items)).toEqual([
+      { type: 'avoid', subtype: 'give', itemId: 10, itemName: 'diamond', characterId: 4, characterName: 'Karen' },
+    ])
+    expect(deriveGoalCriteria('Never give the diamond to Karen', characters, items)).toEqual([
+      { type: 'avoid', subtype: 'give', itemId: 10, itemName: 'diamond', characterId: 4, characterName: 'Karen' },
+    ])
+  })
+
+  it('an avoid criterion is met until the forbidden action occurs, then permanently unmet', () => {
+    const speakCriteria = [{ type: 'avoid', subtype: 'speak', characterId: 4, characterName: 'Karen' }]
+    expect(isGoalComplete(speakCriteria, new Set(), [], new Set(), [])).toBe(true)
+    expect(isGoalComplete(speakCriteria, new Set([4]), [], new Set(), [])).toBe(false)
+
+    const giveCriteria = [{ type: 'avoid', subtype: 'give', itemId: 10, characterId: 4 }]
+    expect(isGoalComplete(giveCriteria, new Set(), [], new Set(), [])).toBe(true)
+    expect(isGoalComplete(giveCriteria, new Set(), [{ itemId: 10, characterId: 4 }], new Set(), [])).toBe(false)
+  })
+    it('derives a compound arrive criterion from a comma-joined goal with a leading "while" conditional clause', () => {
+      const rooms = [{ roomId: 5, roomName: 'Staff Quarters' }]
+      const criteria = deriveGoalCriteria(
+        'While carrying the diamond, reach the Staff Quarters with Karen.',
+        characters,
+        items,
+        rooms,
     )
     expect(criteria).toEqual([
       {
