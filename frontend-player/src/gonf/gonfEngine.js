@@ -593,12 +593,62 @@ function describeGoalCriterion(criterion) {
       return `Hold the ${criterion.itemName}`
     case 'present':
       return `Have ${criterion.characterName} with you`
+    case 'arrive': {
+      const parts = []
+      if (criterion.itemNames?.length) {
+        parts.push(`holding ${criterion.itemNames.join(' and ')}`)
+      }
+      if (criterion.characterNames?.length) {
+        parts.push(`${criterion.characterNames.join(' and ')} with you`)
+      }
+      const requirements = parts.length ? ` while ${parts.join(' and ')}` : ''
+      return `Reach ${criterion.roomName}${requirements}`
+    }
     default:
       return 'Unknown goal criterion'
   }
 }
 
-function isGoalCriterionMet(criterion, spokenSet, transfers, visitedSet, heldSet, presentSet) {
+/// <summary>
+/// Breaks a single criterion down into one or more independently-displayed checklist sub-items,
+/// each with its own "met" status. Most criterion types produce exactly one sub-item identical to
+/// describeGoalCriterion's output; a compound "arrive" criterion is expanded into a separate line
+/// per room/item/companion condition so the player can see which individual parts are still
+/// outstanding, even though all of them must be true simultaneously for the criterion itself (and
+/// the overall goal) to be considered complete.
+/// </summary>
+function describeGoalCriterionSubItems(criterion, spokenSet, transfers, visitedSet, heldSet, presentSet, currentRoomId) {
+  if (criterion.type !== 'arrive') {
+    return [
+      {
+        text: describeGoalCriterion(criterion),
+        isMet: isGoalCriterionMet(criterion, spokenSet, transfers, visitedSet, heldSet, presentSet, currentRoomId),
+      },
+    ]
+  }
+
+  const items = []
+  items.push({
+    text: `Be in ${criterion.roomName}`,
+    isMet: currentRoomId != null && Number(currentRoomId) === Number(criterion.roomId),
+  })
+  for (let i = 0; i < (criterion.itemIds ?? []).length; i += 1) {
+    items.push({
+      text: `Hold the ${criterion.itemNames[i]}`,
+      isMet: heldSet.has(criterion.itemIds[i]),
+    })
+  }
+  for (let i = 0; i < (criterion.characterIds ?? []).length; i += 1) {
+    items.push({
+      text: `Have ${criterion.characterNames[i]} with you`,
+      isMet: presentSet.has(criterion.characterIds[i]),
+    })
+  }
+  return items
+}
+
+
+function isGoalCriterionMet(criterion, spokenSet, transfers, visitedSet, heldSet, presentSet, currentRoomId) {
   if (criterion.type === 'speak') {
     return spokenSet.has(criterion.characterId)
   }
@@ -614,7 +664,26 @@ function isGoalCriterionMet(criterion, spokenSet, transfers, visitedSet, heldSet
   if (criterion.type === 'present') {
     return presentSet.has(criterion.characterId)
   }
+  if (criterion.type === 'arrive') {
+    return isArriveCriterionMet(criterion, heldSet, presentSet, currentRoomId)
+  }
   return false
+}
+
+/// <summary>
+/// Evaluates a compound "arrive" criterion: the player must be *currently* standing in the target
+/// room, while *currently* holding every listed item and having every listed companion character
+/// *currently* present (in the same room or following) - all simultaneously. Unlike "reach", this
+/// does not stay satisfied once achieved; if the player leaves the room, loses an item, or a
+/// companion departs, this reverts to unmet until all conditions line up again.
+/// </summary>
+function isArriveCriterionMet(criterion, heldSet, presentSet, currentRoomId) {
+  if (currentRoomId == null || Number(currentRoomId) !== Number(criterion.roomId)) {
+    return false
+  }
+  const itemsSatisfied = (criterion.itemIds ?? []).every((itemId) => heldSet.has(itemId))
+  const companionsSatisfied = (criterion.characterIds ?? []).every((characterId) => presentSet.has(characterId))
+  return itemsSatisfied && companionsSatisfied
 }
 
 /// <summary>
@@ -622,7 +691,7 @@ function isGoalCriterionMet(criterion, spokenSet, transfers, visitedSet, heldSet
 /// with its current complete/incomplete status, so the player can see exactly what remains.
 /// Returns a friendly message when the Gonf has no (parseable) Goal text at all.
 /// </summary>
-export function buildGoalCommandLine(criteria, spokenCharacterIds, completedGiveTransfers, visitedRoomIds, currentPlayerItemIds, presentCharacterIds) {
+export function buildGoalCommandLine(criteria, spokenCharacterIds, completedGiveTransfers, visitedRoomIds, currentPlayerItemIds, presentCharacterIds, currentRoomId) {
   if (!Array.isArray(criteria) || criteria.length === 0) {
     return {
       speaker: 'System',
@@ -636,9 +705,9 @@ export function buildGoalCommandLine(criteria, spokenCharacterIds, completedGive
   const heldSet = currentPlayerItemIds instanceof Set ? currentPlayerItemIds : new Set(currentPlayerItemIds ?? [])
   const presentSet = presentCharacterIds instanceof Set ? presentCharacterIds : new Set(presentCharacterIds ?? [])
 
-  const criteriaLines = criteria.map((criterion) => {
-    const isMet = isGoalCriterionMet(criterion, spokenSet, transfers, visitedSet, heldSet, presentSet)
-    return `${isMet ? '[x]' : '[ ]'} ${describeGoalCriterion(criterion)}`
+  const criteriaLines = criteria.flatMap((criterion) => {
+    const subItems = describeGoalCriterionSubItems(criterion, spokenSet, transfers, visitedSet, heldSet, presentSet, currentRoomId)
+    return subItems.map(({ text, isMet }) => `${isMet ? '[x]' : '[ ]'} ${text}`)
   })
 
   return {
@@ -682,19 +751,149 @@ function splitGoalClauses(goalText) {
   const clauseVerbLookahead =
     /(?=speak\b|talk\b|talked\b|spoken\b|spoke\b|give\b|make it\b|get to\b|reach\b|arrive\b|go to\b|hold\b|holding\b|carry\b|carrying\b|have\b|obtain\b|keep\b|possess\b)/i
 
-  return goalText
+  // Guard common name/title abbreviations (Mr., Mrs., Ms., Dr., St.) so a trailing "." in the
+  // middle of a character name doesn't get mistaken for sentence-ending punctuation.
+  const protectedText = goalText.replace(/\b(Mr|Mrs|Ms|Dr|St)\./gi, '$1\u0000')
+
+  return protectedText
     .split(/(?:,?\s*(?:then|and then|after that)\s+|[.;\n]+)/i)
     .flatMap((segment) => segment.split(new RegExp(`\\s+and\\s+${clauseVerbLookahead.source}`, 'i')))
     .flatMap((segment) => segment.split(new RegExp(`,\\s*${clauseVerbLookahead.source}`, 'i')))
     .map((clause) =>
       clause
         .trim()
+        .replace(/^(?:[-*\u2022]|\d+[.)])\s+/, '')
         .replace(/^(?:while|when|if|once|after)\s+/i, '')
         .replace(/^and\s+/i, '')
         .replace(/[,;]+$/, '')
+        .replace(/\u0000/g, '.')
         .trim(),
     )
     .filter(Boolean)
+}
+
+/// <summary>
+/// Splits a freeform "Goal" text into top-level "sentences" only (separated by "then"/"and
+/// then"/"after that", sentence punctuation, or newlines) - NOT by commas or "and" before a verb.
+/// This coarser split is used to detect a compound "arrive" sentence (see tryParseArriveSentence)
+/// before the finer splitGoalClauses breakdown is attempted, since a compound arrival sentence's
+/// internal commas/"and"s describe conditions of the same criterion rather than separate criteria.
+/// </summary>
+function splitGoalSentences(goalText) {
+  const protectedText = goalText.replace(/\b(Mr|Mrs|Ms|Dr|St)\./gi, '$1\u0000')
+  return protectedText
+    .split(/(?:,?\s*(?:then|and then|after that)\s+|[.;\n]+)/i)
+    .map((sentence) =>
+      sentence
+        .replace(/\u0000/g, '.')
+        .trim()
+        .replace(/^(?:[-*\u2022]|\d+[.)])\s+/, '')
+        .trim(),
+    )
+    .filter(Boolean)
+}
+
+/// <summary>
+/// Attempts to parse a whole sentence as a compound "arrive" criterion: reach a room while
+/// simultaneously holding one or more items and/or having one or more companions present, e.g.
+/// "While carrying the diamond, reach the Staff Quarters with Mrs. Higgiebottom" or "While holding
+/// the diamond, and Karen following, reach the staff quarters". Requires a leading conditional
+/// word (while/when/if/once/after) introducing the condition list, ending in a
+/// reach/arrive/get-to/make-it-to/go-to/be-in/be-at ROOM clause, with an optional trailing
+/// "with CHARACTER(S)" companion phrase. Returns null if the sentence doesn't match this shape at
+/// all (so the caller falls back to independent per-clause parsing); returns an array (possibly
+/// empty, if the room or conditions can't be resolved) if the shape matches.
+/// </summary>
+function tryParseArriveSentence(sentence, lookups) {
+  const match = sentence.match(
+    /^(?:while|when|if|once|after)\s+(.+?),?\s+(?:and\s+)?(?:make it to|get to|reach|arrive at|arrive in|go to|be in|be at)\s+(?:the\s+)?(.+?)(?:\s+with\s+(.+))?$/i,
+  )
+  if (!match) {
+    return null
+  }
+
+  const [, conditionsText, roomNameCandidate, trailingCompanionsText] = match
+  const room = lookups.findRoomByName(roomNameCandidate)
+  if (!room) {
+    return []
+  }
+
+  const itemIds = []
+  const itemNames = []
+  const characterIds = []
+  const characterNames = []
+
+  const addItem = (item) => {
+    if (item && !itemIds.includes(item.itemId)) {
+      itemIds.push(item.itemId)
+      itemNames.push(item.itemName)
+    }
+  }
+  const addCharacter = (character) => {
+    if (character && !characterIds.includes(character.characterId)) {
+      characterIds.push(character.characterId)
+      characterNames.push(character.characterName)
+    }
+  }
+
+  const conditions = conditionsText
+    .split(/,|\band\b/i)
+    .map((condition) => condition.trim().replace(/[.!?]+$/, '').trim())
+    .filter(Boolean)
+
+  for (const condition of conditions) {
+    const holdMatch = condition.match(/^(?:be\s+)?(?:holding|hold|carry|carrying|have|having|obtain|keep|possess)\s+(?:the\s+)?(.+)$/i)
+    if (holdMatch) {
+      const item = lookups.findItemByName(holdMatch[1])
+      if (item) {
+        addItem(item)
+        continue
+      }
+      // Falls through: e.g. "have Karen following"/"have Karen with you" isn't an item, so try
+      // to resolve the remainder as a companion condition instead of silently dropping it.
+    }
+
+    const followMatch = condition.match(/^(?:have\s+|having\s+)?(.+?)\s+(?:is\s+)?following$/i)
+    if (followMatch) {
+      addCharacter(lookups.findCharacterByName(followMatch[1]))
+      continue
+    }
+
+    // Bare character name used as a condition (e.g. "with Karen present").
+    const presentMatch = condition.match(/^(?:have\s+|having\s+)?(.+?)\s+(?:is\s+)?present$/i)
+    if (presentMatch) {
+      addCharacter(lookups.findCharacterByName(presentMatch[1]))
+      continue
+    }
+
+    // Bare "have/having CHARACTER" with no trailing keyword (e.g. "have Karen with you").
+    const bareHaveMatch = condition.match(/^(?:have|having)\s+(.+)$/i)
+    addCharacter(lookups.findCharacterByName(bareHaveMatch ? bareHaveMatch[1] : condition))
+  }
+
+  if (trailingCompanionsText) {
+    for (const name of trailingCompanionsText
+      .split(/,|\band\b/i)
+      .map((n) => n.trim().replace(/[.!?]+$/, '').trim())
+      .filter(Boolean)) {
+      addCharacter(lookups.findCharacterByName(name))
+    }
+  }
+
+  return [
+    {
+      criterion: {
+        type: 'arrive',
+        roomId: room.roomId,
+        roomName: room.roomName,
+        itemIds,
+        itemNames,
+        characterIds,
+        characterNames,
+      },
+      key: `arrive:${room.roomId}:${[...itemIds].sort().join(',')}:${[...characterIds].sort().join(',')}`,
+    },
+  ]
 }
 
 /// <summary>
@@ -853,20 +1052,33 @@ export function deriveGoalCriteria(goalText, characters, items, rooms) {
     findRoomByName: (name) => roomList.find((room) => room.roomName?.toLowerCase() === name?.toLowerCase().trim()),
   }
 
-  for (const clause of splitGoalClauses(goalText)) {
-    for (const matcher of GOAL_CLAUSE_MATCHERS) {
-      const match = clause.match(matcher.regex)
-      if (!match) {
-        continue
-      }
-
-      for (const { criterion, key } of matcher.build(match, lookups)) {
+  for (const sentence of splitGoalSentences(goalText)) {
+    const arriveResults = tryParseArriveSentence(sentence, lookups)
+    if (arriveResults !== null) {
+      for (const { criterion, key } of arriveResults) {
         if (!seen.has(key)) {
           seen.add(key)
           criteria.push(criterion)
         }
       }
-      break
+      continue
+    }
+
+    for (const clause of splitGoalClauses(sentence)) {
+      for (const matcher of GOAL_CLAUSE_MATCHERS) {
+        const match = clause.match(matcher.regex)
+        if (!match) {
+          continue
+        }
+
+        for (const { criterion, key } of matcher.build(match, lookups)) {
+          if (!seen.has(key)) {
+            seen.add(key)
+            criteria.push(criterion)
+          }
+        }
+        break
+      }
     }
   }
 
@@ -883,7 +1095,7 @@ export function deriveGoalCriteria(goalText, characters, items, rooms) {
 /// visitedRoomIds: Set/array of roomIds the player has visited (defaults to none).
 /// currentPlayerItemIds: Set/array of itemIds the player is currently carrying (defaults to none).
 /// </summary>
-export function isGoalComplete(criteria, spokenCharacterIds, completedGiveTransfers, visitedRoomIds, currentPlayerItemIds, presentCharacterIds) {
+export function isGoalComplete(criteria, spokenCharacterIds, completedGiveTransfers, visitedRoomIds, currentPlayerItemIds, presentCharacterIds, currentRoomId) {
   if (!Array.isArray(criteria) || criteria.length === 0) {
     return false
   }
@@ -915,6 +1127,10 @@ export function isGoalComplete(criteria, spokenCharacterIds, completedGiveTransf
 
     if (criterion.type === 'present') {
       return presentSet.has(criterion.characterId)
+    }
+
+    if (criterion.type === 'arrive') {
+      return isArriveCriterionMet(criterion, heldSet, presentSet, currentRoomId)
     }
 
     return false

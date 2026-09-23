@@ -350,6 +350,55 @@ describe('player commands', () => {
     const line = buildGoalCommandLine([], new Set(), [], new Set(), [])
     expect(line).toEqual({ speaker: 'System', text: 'Goal: this Gonf has no defined win criteria.' })
   })
+
+  it('expands a compound arrive criterion into separate room/item/companion checklist lines', () => {
+    const criteria = [
+      {
+        type: 'arrive',
+        roomId: 7,
+        roomName: 'Staff Quarters',
+        itemIds: [10],
+        itemNames: ['Diamond'],
+        characterIds: [4],
+        characterNames: ['Mrs. Karen Higgiebottom'],
+      },
+    ]
+
+    const line = buildGoalCommandLine(criteria, new Set(), [], new Set(), [10], new Set([4]), 7)
+    expect(line.speaker).toBe('System')
+    expect(line.text).toBe(
+      [
+        'Goal criteria:',
+        '[x] Be in Staff Quarters',
+        '[x] Hold the Diamond',
+        '[x] Have Mrs. Karen Higgiebottom with you',
+      ].join('\n'),
+    )
+  })
+
+  it('shows unmet sub-items of a compound arrive criterion independently', () => {
+    const criteria = [
+      {
+        type: 'arrive',
+        roomId: 7,
+        roomName: 'Staff Quarters',
+        itemIds: [10],
+        itemNames: ['Diamond'],
+        characterIds: [4],
+        characterNames: ['Mrs. Karen Higgiebottom'],
+      },
+    ]
+
+    const line = buildGoalCommandLine(criteria, new Set(), [], new Set(), [], new Set(), null)
+    expect(line.text).toBe(
+      [
+        'Goal criteria:',
+        '[ ] Be in Staff Quarters',
+        '[ ] Hold the Diamond',
+        '[ ] Have Mrs. Karen Higgiebottom with you',
+      ].join('\n'),
+    )
+  })
 })
 
 describe('goal criteria', () => {
@@ -358,6 +407,7 @@ describe('goal criteria', () => {
     { characterId: 2, characterName: 'Sir Faulty' },
     { characterId: 3, characterName: 'Reggie' },
     { characterId: 4, characterName: 'Karen' },
+    { characterId: 5, characterName: 'Mrs. Higgiebottom' },
   ]
   const items = [{ itemId: 10, itemName: 'diamond' }]
 
@@ -377,6 +427,43 @@ describe('goal criteria', () => {
     const criteria = deriveGoalCriteria('give the diamond to Karen', characters, items)
     expect(criteria).toEqual([
       { type: 'give', itemId: 10, itemName: 'diamond', characterId: 4, characterName: 'Karen' },
+    ])
+  })
+
+  it('derives criteria from a bullet-formatted goal list using "-" markers', () => {
+    const criteria = deriveGoalCriteria(
+      '- Speak with Muffy.\n- Give the diamond to Karen.\n- Hold the diamond.',
+      characters,
+      items,
+    )
+    expect(criteria).toEqual(
+      expect.arrayContaining([
+        { type: 'speak', characterId: 1, characterName: 'Muffy' },
+        { type: 'give', itemId: 10, itemName: 'diamond', characterId: 4, characterName: 'Karen' },
+        { type: 'hold', itemId: 10, itemName: 'diamond' },
+      ]),
+    )
+    expect(criteria).toHaveLength(3)
+  })
+
+  it('derives a compound arrive criterion from a bullet-formatted goal line', () => {
+    const rooms = [{ roomId: 7, roomName: 'Staff Quarters' }]
+    const criteria = deriveGoalCriteria(
+      '* While holding the diamond, and Karen following, reach the staff quarters.',
+      characters,
+      items,
+      rooms,
+    )
+    expect(criteria).toEqual([
+      {
+        type: 'arrive',
+        roomId: 7,
+        roomName: 'Staff Quarters',
+        itemIds: [10],
+        itemNames: ['diamond'],
+        characterIds: [4],
+        characterNames: ['Karen'],
+      },
     ])
   })
 
@@ -412,7 +499,7 @@ describe('goal criteria', () => {
     ])
   })
 
-  it('derives multiple criteria from a comma-joined goal with a leading "while" conditional clause', () => {
+  it('derives a compound arrive criterion from a comma-joined goal with a leading "while" conditional clause', () => {
     const rooms = [{ roomId: 5, roomName: 'Staff Quarters' }]
     const criteria = deriveGoalCriteria(
       'While carrying the diamond, reach the Staff Quarters with Karen.',
@@ -420,14 +507,17 @@ describe('goal criteria', () => {
       items,
       rooms,
     )
-    expect(criteria).toEqual(
-      expect.arrayContaining([
-        { type: 'hold', itemId: 10, itemName: 'diamond' },
-        { type: 'reach', roomId: 5, roomName: 'Staff Quarters' },
-        { type: 'present', characterId: 4, characterName: 'Karen' },
-      ]),
-    )
-    expect(criteria).toHaveLength(3)
+    expect(criteria).toEqual([
+      {
+        type: 'arrive',
+        roomId: 5,
+        roomName: 'Staff Quarters',
+        itemIds: [10],
+        itemNames: ['diamond'],
+        characterIds: [4],
+        characterNames: ['Karen'],
+      },
+    ])
   })
 
   it('silently skips clauses referencing characters/items/rooms that do not exist in this Gonf', () => {
@@ -458,7 +548,28 @@ describe('goal criteria', () => {
     expect(deriveGoalCriteria(null, characters, items)).toEqual([])
   })
 
-  it('derives hold, speak-about, reach, and present criteria from a compound multi-clause goal', () => {
+  it('does not mis-split a goal on a period inside a character title abbreviation like "Mrs."', () => {
+    const rooms = [{ roomId: 7, roomName: 'Staff Quarters' }]
+    const criteria = deriveGoalCriteria(
+      'While carrying the diamond, reach the Staff Quarters with Mrs. Higgiebottom.',
+      characters,
+      items,
+      rooms,
+    )
+    expect(criteria).toEqual([
+      {
+        type: 'arrive',
+        roomId: 7,
+        roomName: 'Staff Quarters',
+        itemIds: [10],
+        itemNames: ['diamond'],
+        characterIds: [5],
+        characterNames: ['Mrs. Higgiebottom'],
+      },
+    ])
+  })
+
+  it('derives a compound arrive criterion (item + companion) for a full example goal with an embedded "talked ... about" condition', () => {
     const rooms = [{ roomId: 6, roomName: 'Kitchen' }]
     const criteria = deriveGoalCriteria(
       'While carrying the diamond, and have talked to Muffy about her parrot, arrive in the kitchen with Karen',
@@ -466,15 +577,61 @@ describe('goal criteria', () => {
       items,
       rooms,
     )
-    expect(criteria).toEqual(
-      expect.arrayContaining([
-        { type: 'hold', itemId: 10, itemName: 'diamond' },
-        { type: 'speak', characterId: 1, characterName: 'Muffy' },
-        { type: 'reach', roomId: 6, roomName: 'Kitchen' },
-        { type: 'present', characterId: 4, characterName: 'Karen' },
-      ]),
+    // The "talked to Muffy about her parrot" condition isn't a hold/follow phrase, so it can't be
+    // resolved as an arrive condition and is dropped; only the item + companion conditions apply.
+    expect(criteria).toEqual([
+      {
+        type: 'arrive',
+        roomId: 6,
+        roomName: 'Kitchen',
+        itemIds: [10],
+        itemNames: ['diamond'],
+        characterIds: [4],
+        characterNames: ['Karen'],
+      },
+    ])
+  })
+
+  it('derives a compound arrive criterion from the recommended "while holding X, and Y following, reach Z" phrasing', () => {
+    const rooms = [{ roomId: 7, roomName: 'Staff Quarters' }]
+    const criteria = deriveGoalCriteria(
+      'While holding the diamond, and Karen following, reach the staff quarters',
+      characters,
+      items,
+      rooms,
     )
-    expect(criteria).toHaveLength(4)
+    expect(criteria).toEqual([
+      {
+        type: 'arrive',
+        roomId: 7,
+        roomName: 'Staff Quarters',
+        itemIds: [10],
+        itemNames: ['diamond'],
+        characterIds: [4],
+        characterNames: ['Karen'],
+      },
+    ])
+  })
+
+  it('keeps the companion condition when phrased as "have Karen following" instead of dropping it', () => {
+    const rooms = [{ roomId: 7, roomName: 'Staff Quarters' }]
+    const criteria = deriveGoalCriteria(
+      'While holding the diamond, and have Karen following, reach the staff quarters',
+      characters,
+      items,
+      rooms,
+    )
+    expect(criteria).toEqual([
+      {
+        type: 'arrive',
+        roomId: 7,
+        roomName: 'Staff Quarters',
+        itemIds: [10],
+        itemNames: ['diamond'],
+        characterIds: [4],
+        characterNames: ['Karen'],
+      },
+    ])
   })
 
   it('reports incomplete when not all criteria are satisfied', () => {
@@ -507,7 +664,7 @@ describe('goal criteria', () => {
     expect(isGoalComplete([], new Set([1]), [])).toBe(false)
   })
 
-  it('reports a present criterion complete only while the character is currently in-room or following', () => {
+  it('reports a compound arrive criterion complete only when currently in the room, holding the item, and the companion is present, all simultaneously', () => {
     const rooms = [{ roomId: 5, roomName: 'Staff Quarters' }]
     const criteria = deriveGoalCriteria(
       'While carrying the diamond, reach the Staff Quarters with Karen.',
@@ -515,10 +672,14 @@ describe('goal criteria', () => {
       items,
       rooms,
     )
-    // Diamond held and room reached, but Karen not present -> incomplete
-    expect(isGoalComplete(criteria, new Set(), [], new Set([5]), [10], new Set())).toBe(false)
-    // Karen present (in room or following) -> complete
-    expect(isGoalComplete(criteria, new Set(), [], new Set([5]), [10], new Set([4]))).toBe(true)
+    // Diamond held and room visited historically, but not currently in the room -> incomplete
+    expect(isGoalComplete(criteria, new Set(), [], new Set([5]), [10], new Set([4]), 1)).toBe(false)
+    // Currently in the room, but Karen not present -> incomplete
+    expect(isGoalComplete(criteria, new Set(), [], new Set([5]), [10], new Set(), 5)).toBe(false)
+    // Currently in the room, holding the diamond, and Karen present -> complete
+    expect(isGoalComplete(criteria, new Set(), [], new Set([5]), [10], new Set([4]), 5)).toBe(true)
+    // Leaving the room afterward reverts it to incomplete (live check, not history-based)
+    expect(isGoalComplete(criteria, new Set(), [], new Set([5]), [10], new Set([4]), 1)).toBe(false)
   })
 })
 

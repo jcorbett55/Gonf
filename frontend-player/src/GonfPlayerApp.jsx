@@ -280,11 +280,28 @@ function GonfPlayerApp() {
     }
 
     if (
-      isGoalComplete(goalCriteria, spokenCharacterIds, completedGiveTransfers, visitedRoomIds, playerItemIds, presentCharacterIds)
+      isGoalComplete(
+        goalCriteria,
+        spokenCharacterIds,
+        completedGiveTransfers,
+        visitedRoomIds,
+        playerItemIds,
+        presentCharacterIds,
+        currentRoomId,
+      )
     ) {
       setHasWon(true)
     }
-  }, [goalCriteria, spokenCharacterIds, completedGiveTransfers, visitedRoomIds, playerItemIds, presentCharacterIds, hasWon])
+  }, [
+    goalCriteria,
+    spokenCharacterIds,
+    completedGiveTransfers,
+    visitedRoomIds,
+    playerItemIds,
+    presentCharacterIds,
+    currentRoomId,
+    hasWon,
+  ])
 
   const narrationText = useMemo(() => {
     if (!currentRoom) {
@@ -314,6 +331,7 @@ function GonfPlayerApp() {
     setConversationError('')
 
     if (nonFollowerCharactersInRoom.length === 0) {
+      setIsConversationLoading(false)
       return
     }
 
@@ -379,7 +397,15 @@ function GonfPlayerApp() {
       } else if (playerCommand === 'goal') {
         setConversationLog([
           ...nextLogWithPlayer,
-          buildGoalCommandLine(goalCriteria, spokenCharacterIds, completedGiveTransfers, visitedRoomIds, playerItemIds, presentCharacterIds),
+          buildGoalCommandLine(
+            goalCriteria,
+            spokenCharacterIds,
+            completedGiveTransfers,
+            visitedRoomIds,
+            playerItemIds,
+            presentCharacterIds,
+            currentRoomId,
+          ),
         ])
       } else {
         setConversationLog([...nextLogWithPlayer, buildUnknownCommandLine()])
