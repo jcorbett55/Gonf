@@ -40,6 +40,7 @@ public static class ServiceRegistration
         });
 
         builder.Services.AddSingleton<PlayerSaveStateService>();
+        builder.Services.AddSingleton<MysteryCaseFileStorageService>();
 
         return builder;
     }

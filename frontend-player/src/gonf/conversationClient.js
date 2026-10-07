@@ -1,7 +1,7 @@
 import { API_BASE_URL } from './shared'
 import { getCarriedItemsForCharacter } from './gonfEngine'
 
-export async function fetchConversationTurn({ roomName, roomDescription, characters, items, transcript, playerMessage, previousLines, characterMemory }) {
+export async function fetchConversationTurn({ roomName, roomDescription, characters, items, transcript, playerMessage, previousLines, characterMemory, gonfName, saveId, playerHeldItemIds, goal }) {
   const response = await fetch(`${API_BASE_URL}/api/conversation/turn`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -19,6 +19,10 @@ export async function fetchConversationTurn({ roomName, roomDescription, charact
       playerMessage: playerMessage ?? null,
       previousLines: previousLines ?? [],
       characterMemory: characterMemory ?? [],
+      gonfName: gonfName ?? null,
+      saveId: saveId ?? null,
+      playerHeldItemIds: playerHeldItemIds ?? [],
+      goal: goal ?? null,
     }),
   })
 

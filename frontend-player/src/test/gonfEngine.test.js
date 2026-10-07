@@ -22,6 +22,14 @@ import {
   buildUnknownCommandLine,
   deriveGoalCriteria,
   isGoalComplete,
+  detectAccusationRequest,
+  isAccusationConfirmation,
+  isAccusationDecline,
+  buildAccusationConfirmationLine,
+  buildAccusationCancelledLine,
+  buildAccusationCorrectLine,
+  buildAccusationIncorrectLine,
+  buildGuiltyConfessionLines,
 } from '../gonf/gonfEngine'
 
 function buildPayload(overrides = {}) {
@@ -798,4 +806,97 @@ describe('goal criteria', () => {
     expect(isGoalComplete(criteria, new Set(), [], new Set([5]), [10], new Set([4]), 1)).toBe(false)
   })
 })
+
+describe('mystery accusation parsing (GONF-014)', () => {
+  const charactersInRoom = [
+    { characterId: 1, characterName: 'Karen' },
+    { characterId: 2, characterName: 'Bob' },
+  ]
+
+  it('detects the /accuse slash command with a matching character name', () => {
+    const accused = detectAccusationRequest('/accuse Karen', charactersInRoom)
+    expect(accused).toEqual(charactersInRoom[0])
+  })
+
+  it('detects a natural-language accusation phrased as "I accuse X"', () => {
+    const accused = detectAccusationRequest('I accuse Bob', charactersInRoom)
+    expect(accused).toEqual(charactersInRoom[1])
+  })
+
+  it('detects a natural-language accusation phrased as "It was X"', () => {
+    const accused = detectAccusationRequest('It was Karen, I know it', charactersInRoom)
+    expect(accused).toEqual(charactersInRoom[0])
+  })
+
+  it('detects a bare "accuse X" without "I"', () => {
+    const accused = detectAccusationRequest('accuse Karen', charactersInRoom)
+    expect(accused).toEqual(charactersInRoom[0])
+  })
+
+  it('matches a partial name (first name only) against a full display name', () => {
+    const fullNameCharacters = [
+      { characterId: 1, characterName: 'Mrs. Karen Higgiebottom' },
+      { characterId: 2, characterName: 'Sir Fawlty' },
+    ]
+
+    expect(detectAccusationRequest('accuse Karen', fullNameCharacters)).toEqual(fullNameCharacters[0])
+    expect(detectAccusationRequest('I accuse Fawlty', fullNameCharacters)).toEqual(fullNameCharacters[1])
+    expect(detectAccusationRequest('/accuse Higgiebottom', fullNameCharacters)).toEqual(fullNameCharacters[0])
+  })
+
+  it('returns null when no present character name is mentioned', () => {
+    expect(detectAccusationRequest('/accuse', charactersInRoom)).toBeNull()
+    expect(detectAccusationRequest('I accuse nobody in particular', charactersInRoom)).toBeNull()
+  })
+
+  it('returns null for plain conversational messages', () => {
+    expect(detectAccusationRequest('hey Karen, how are you?', charactersInRoom)).toBeNull()
+  })
+
+  it('returns null when there are no characters present', () => {
+    expect(detectAccusationRequest('/accuse Karen', [])).toBeNull()
+  })
+
+  it('detects accusation confirmation and decline', () => {
+    expect(isAccusationConfirmation('yes')).toBe(true)
+    expect(isAccusationConfirmation('yeah, do it')).toBe(true)
+    expect(isAccusationConfirmation('no')).toBe(false)
+    expect(isAccusationDecline('no')).toBe(true)
+    expect(isAccusationDecline('never mind')).toBe(true)
+    expect(isAccusationDecline('yes')).toBe(false)
+  })
+
+  it('builds the accusation confirmation, cancel, correct, and incorrect lines', () => {
+    expect(buildAccusationConfirmationLine('Karen').speaker).toBe('System')
+    expect(buildAccusationConfirmationLine('Karen').text).toContain('Karen')
+    expect(buildAccusationCancelledLine()).toEqual({ speaker: 'System', text: 'Accusation cancelled.' })
+    expect(buildAccusationCorrectLine('Karen').text).toContain('right')
+    expect(buildAccusationIncorrectLine('Karen').text).toContain('GAME OVER')
+  })
+
+  it('builds a guilty confession rant referencing the character name and motive, ending with a continue prompt (GONF-015)', () => {
+    const lines = buildGuiltyConfessionLines('Karen', 'a desperate need for money')
+
+    expect(lines.length).toBeGreaterThanOrEqual(2)
+    expect(lines[0].speaker).toBe('Karen')
+    expect(lines[0].text).toContain('Karen')
+    expect(lines[0].text).toContain('a desperate need for money')
+    expect(lines[lines.length - 1]).toEqual({ speaker: 'System', text: 'Press Enter to continue...' })
+  })
+
+  it('falls back to a generic motive phrase when no motive is provided', () => {
+    const lines = buildGuiltyConfessionLines('Karen', null)
+
+    expect(lines[0].text).toContain('Karen')
+    expect(lines[0].text.length).toBeGreaterThan(0)
+  })
+
+  it('deterministically picks the same rant template for the same character/motive pair', () => {
+    const first = buildGuiltyConfessionLines('Karen', 'jealousy over being overlooked')
+    const second = buildGuiltyConfessionLines('Karen', 'jealousy over being overlooked')
+
+    expect(first[0].text).toBe(second[0].text)
+  })
+})
+
 

@@ -13,12 +13,18 @@ public sealed partial class OpenAiChatCompletionProvider : IChatCompletionProvid
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
     private readonly ILogger<OpenAiChatCompletionProvider> _logger;
+    private readonly MysteryCaseFileStorageService _caseFileStorageService;
 
-    public OpenAiChatCompletionProvider(HttpClient httpClient, IConfiguration configuration, ILogger<OpenAiChatCompletionProvider> logger)
+    public OpenAiChatCompletionProvider(
+        HttpClient httpClient,
+        IConfiguration configuration,
+        ILogger<OpenAiChatCompletionProvider> logger,
+        MysteryCaseFileStorageService caseFileStorageService)
     {
         _httpClient = httpClient;
         _configuration = configuration;
         _logger = logger;
+        _caseFileStorageService = caseFileStorageService;
     }
 
     public async Task<ConversationTurnResult> GenerateConversationTurnAsync(ConversationTurnRequest request, CancellationToken cancellationToken)
@@ -49,7 +55,16 @@ public sealed partial class OpenAiChatCompletionProvider : IChatCompletionProvid
         var apiKey = _configuration["ChatProvider:ApiKey"];
         var requestUri = new Uri(baseUri, chatPath);
 
-        var systemPrompt = BuildSystemPrompt(request);
+        // GONF-014 Edge Case 5: when GonfName/SaveId are absent, or no case file exists for this
+        // playthrough (non-mystery Gonf), none of the mystery-specific prompt/guard behavior
+        // activates and generation proceeds exactly as before.
+        MysteryCaseFile? caseFile = null;
+        if (!string.IsNullOrWhiteSpace(request.GonfName) && !string.IsNullOrWhiteSpace(request.SaveId))
+        {
+            caseFile = await _caseFileStorageService.LoadOrGenerateAsync(request.GonfName, request.SaveId, cancellationToken);
+        }
+
+        var systemPrompt = BuildSystemPrompt(request, caseFile);
         var userPrompt = BuildUserPrompt(request);
         _logger.LogWarning("DEBUG system prompt: {Prompt}", systemPrompt);
         _logger.LogWarning("DEBUG incoming characterMemory count: {Count}", request.CharacterMemory?.Count ?? -1);
@@ -150,6 +165,15 @@ public sealed partial class OpenAiChatCompletionProvider : IChatCompletionProvid
                 return new ConversationTurnResult(false, null, "CHAT_GENERATION_FAILED", "Conversation provider response did not reference any character present in the room.");
             }
 
+            if (caseFile is not null)
+            {
+                var guiltyCharacter = request.Characters.FirstOrDefault(character => character.CharacterId == caseFile.GuiltyCharacterId);
+                if (guiltyCharacter is not null)
+                {
+                    filteredLines = MysteryDialogueGuard.Enforce(caseFile, guiltyCharacter.CharacterName, filteredLines).ToArray();
+                }
+            }
+
             var updatedMemory = RecordTurnMemory(request, filteredLines);
             return new ConversationTurnResult(true, filteredLines, null, null, updatedMemory);
         }
@@ -187,12 +211,20 @@ public sealed partial class OpenAiChatCompletionProvider : IChatCompletionProvid
         return partialMatches.Length == 1 ? partialMatches[0].CharacterName : null;
     }
 
-    internal static string BuildSystemPrompt(ConversationTurnRequest request)
+    internal static string BuildSystemPrompt(ConversationTurnRequest request, MysteryCaseFile? caseFile = null)
     {
         var characterList = string.Join(
             "\n",
             request.Characters.Select(character =>
-                $"- {character.CharacterName}: {character.CharacterDescription}{BuildCarriedItemsSuffix(character)}{BuildMemoryFactsSuffix(character)}"));
+                $"- {character.CharacterName}: {character.CharacterDescription}{BuildCarriedItemsSuffix(character)}{BuildMemoryFactsSuffix(character)}{BuildMysterySuffix(character, request, caseFile)}"));
+
+        // Placed at the very end of the system prompt, right before the response-format
+        // instruction, rather than mid-prompt: models (especially smaller/local ones) weight
+        // instructions near the end of a long system prompt more reliably than ones buried in the
+        // middle, and this instruction is high-priority for mystery-aware dialogue to work at all.
+        var mysteryPremiseSection = caseFile is not null
+            ? $"{MysteryDialogueService.BuildSharedPremiseInstruction(request.Goal)}\n"
+            : string.Empty;
 
         return
             "You are role-playing as one or more characters inside a text adventure game. " +
@@ -216,8 +248,34 @@ public sealed partial class OpenAiChatCompletionProvider : IChatCompletionProvid
             $"Room: {request.RoomName}. Room description: {request.RoomDescription}.\n" +
             $"Characters present:\n{characterList}\n\n" +
             BuildPreviousLinesSection(request) +
+            mysteryPremiseSection +
             "Respond ONLY with strict JSON matching this shape, with no markdown fences or extra commentary: " +
             "{\"lines\":[{\"speaker\":\"CharacterName\",\"text\":\"Dialogue line\"}]}";
+    }
+
+    /// <summary>
+    /// Builds the GONF-014 mystery dialogue suffix for a single character: the guilty character's
+    /// escalation/do-not-reveal instruction, or an innocent witness's gated clue facts. Returns
+    /// empty when there is no case file for this playthrough, or when the character has nothing
+    /// mystery-relevant to add.
+    /// </summary>
+    private static string BuildMysterySuffix(ConversationCharacterInfo character, ConversationTurnRequest request, MysteryCaseFile? caseFile)
+    {
+        if (caseFile is null)
+        {
+            return string.Empty;
+        }
+
+        if (caseFile.GuiltyCharacterId == character.CharacterId)
+        {
+            var relevantKnownClueCount = MysteryDialogueService.CountRelevantKnownClues(caseFile, character.CharacterId, request.PlayerHeldItemIds) ?? 0;
+            return $" [MYSTERY: {MysteryDialogueService.BuildGuiltyCharacterInstruction(caseFile, character.CharacterName, relevantKnownClueCount)}]";
+        }
+
+        var witnessedFacts = MysteryDialogueService.BuildWitnessedClueFacts(caseFile, character.CharacterId);
+        return witnessedFacts.Count == 0
+            ? string.Empty
+            : $" [MYSTERY WITNESS: {string.Join("; ", witnessedFacts)}]";
     }
 
     private static string BuildCarriedItemsSuffix(ConversationCharacterInfo character)

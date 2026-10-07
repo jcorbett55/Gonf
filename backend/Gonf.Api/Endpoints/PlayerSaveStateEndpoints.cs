@@ -40,6 +40,7 @@ public static class PlayerSaveStateEndpoints
             string saveId,
             PlayerSaveStateRequest request,
             PlayerSaveStateService saveStateService,
+            MysteryCaseFileStorageService caseFileStorageService,
             ILogger<Program> logger,
             CancellationToken cancellationToken) =>
         {
@@ -50,7 +51,23 @@ public static class PlayerSaveStateEndpoints
 
             try
             {
-                var saveState = await saveStateService.SaveAsync(gonfName, saveId, request, cancellationToken);
+                // Lazily generate the hidden GONF-013 mystery case file the first time this
+                // playthrough is saved (LoadOrGenerateAsync is a no-op on subsequent calls since
+                // it returns the already-persisted case file instead of regenerating). Any
+                // synthesized clue items are merged into this save's RoomItemLocations so they
+                // behave identically to authored items once the save is persisted. The case file
+                // itself is never included in the request/response - it stays server-side only.
+                var caseFile = await caseFileStorageService.LoadOrGenerateAsync(gonfName, saveId, cancellationToken);
+                var effectiveRequest = caseFile is null
+                    ? request
+                    : request with
+                    {
+                        RoomItemLocations = MysteryCaseFileStorageService.MergeSynthesizedItemsIntoRoomLocations(
+                            caseFile,
+                            request.RoomItemLocations ?? Array.Empty<PlayerSaveStateItemLocationRequest>()),
+                    };
+
+                var saveState = await saveStateService.SaveAsync(gonfName, saveId, effectiveRequest, cancellationToken);
 
                 return Results.Json(new
                 {

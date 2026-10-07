@@ -95,11 +95,17 @@ function mapItemForPlayerState(rawItem, index) {
     return null
   }
 
+  const contentsSource = Array.isArray(rawItem.contents ?? rawItem.itemContents)
+    ? rawItem.contents ?? rawItem.itemContents
+    : []
+
   return {
     itemId: Number(rawItem.itemId ?? rawItem.id ?? index + 1),
     itemName: String(rawItem.itemName ?? rawItem.name ?? ''),
     itemDescription: String(rawItem.itemDescription ?? rawItem.description ?? ''),
     location: rawItem.location === null || rawItem.location === undefined ? '' : String(rawItem.location),
+    canHoldItems: Boolean(rawItem.canHoldItems),
+    contents: contentsSource.map(Number).filter((itemId) => Number.isFinite(itemId)),
   }
 }
 
@@ -133,6 +139,31 @@ export function parseLoadedGonf(payload) {
     rooms,
     characters,
     items,
+  }
+}
+
+/// <summary>
+/// Merges GONF-013 synthesized clue item definitions (fetched from the backend after load) into
+/// an already-parsed Gonf's item list, so `/look` can reveal them. Items whose id already exists
+/// in the parsed Gonf are skipped to avoid clobbering authored items.
+/// </summary>
+export function mergeSynthesizedItems(parsedGonf, rawSynthesizedItems) {
+  if (!parsedGonf || !Array.isArray(rawSynthesizedItems) || rawSynthesizedItems.length === 0) {
+    return parsedGonf
+  }
+
+  const existingItemIds = new Set((parsedGonf.items ?? []).map((item) => Number(item.itemId)))
+  const additionalItems = rawSynthesizedItems
+    .map((rawItem, index) => mapItemForPlayerState(rawItem, index))
+    .filter((item) => item && !existingItemIds.has(Number(item.itemId)))
+
+  if (additionalItems.length === 0) {
+    return parsedGonf
+  }
+
+  return {
+    ...parsedGonf,
+    items: [...parsedGonf.items, ...additionalItems],
   }
 }
 
@@ -176,6 +207,147 @@ export function getCarriedItemsForCharacter(character, items) {
       itemName: item.itemName,
       itemDescription: item.itemDescription,
     }))
+}
+
+/// <summary>
+/// Returns the items whose location is the given room. Items held by characters or the player
+/// are not room items, so this only reflects items dropped/placed directly in the room.
+/// </summary>
+export function getItemsInRoom(items, roomId) {
+  if (!Array.isArray(items) || roomId === null || roomId === undefined) {
+    return []
+  }
+
+  return items.filter((item) => item.location !== '' && Number(item.location) === Number(roomId))
+}
+
+/// <summary>
+/// Returns the items contained within a given item (e.g. a bookcase that canHoldItems), based on
+/// its `contents` list of item ids.
+/// </summary>
+export function getContainedItemsForItem(item, items) {
+  if (!item || !Array.isArray(item.contents) || item.contents.length === 0 || !Array.isArray(items)) {
+    return []
+  }
+
+  const containedIds = new Set(item.contents.map(Number))
+  return items.filter((candidate) => containedIds.has(Number(candidate.itemId)))
+}
+
+const INSPECT_COMMAND_PATTERN = /^\/(?:look|examine|inspect)\b\s*(?:at\s+)?(.*)$/i
+const NATURAL_INSPECT_PATTERN = /^(?:look\s+at|examine|inspect)\s+(.+)$/i
+
+/// <summary>
+/// Parses a player message as an inspection request (GONF-015), matching `/look`, `/examine`,
+/// `/inspect` slash commands (optionally followed by "at") as well as natural-language equivalents
+/// like "look at the diamond" or "examine Karen". Returns the raw search text, or null if the
+/// message isn't an inspection request. An empty search text means "look at the room".
+/// </summary>
+export function parseInspectionRequest(playerMessage) {
+  if (!playerMessage) {
+    return null
+  }
+
+  const trimmed = playerMessage.trim()
+  const slashMatch = INSPECT_COMMAND_PATTERN.exec(trimmed)
+  if (slashMatch) {
+    return slashMatch[1].trim()
+  }
+
+  const naturalMatch = NATURAL_INSPECT_PATTERN.exec(trimmed)
+  if (naturalMatch) {
+    return naturalMatch[1].trim()
+  }
+
+  return null
+}
+
+function stripLeadingArticle(text) {
+  return text.replace(/^(the|a|an)\s+/i, '').trim()
+}
+
+/// <summary>
+/// Resolves an inspection search string against the characters, items, and current room available
+/// to the player, preferring an exact/partial character name match, then an item match (whether
+/// held by the player, a character in the room, or present in the room), then falling back to the
+/// room itself. Returns a descriptor object identifying the resolved target, or null if nothing
+/// could be resolved and the search text was non-empty.
+/// </summary>
+export function resolveInspectionTarget(searchText, { charactersInRoom, items, room, playerItemIds }) {
+  const normalizedSearch = stripLeadingArticle((searchText ?? '').toLowerCase())
+
+  if (!normalizedSearch) {
+    return room ? { type: 'room', room } : null
+  }
+
+  const matchedCharacter = (charactersInRoom ?? []).find((character) =>
+    character.characterName.toLowerCase().includes(normalizedSearch),
+  )
+  if (matchedCharacter) {
+    return { type: 'character', character: matchedCharacter }
+  }
+
+  const heldIds = new Set((playerItemIds ?? []).map(Number))
+  const roomItems = getItemsInRoom(items, room?.roomId)
+  const candidateItems = (items ?? []).filter(
+    (item) =>
+      heldIds.has(Number(item.itemId)) ||
+      roomItems.some((roomItem) => Number(roomItem.itemId) === Number(item.itemId)) ||
+      (charactersInRoom ?? []).some((character) => (character.contains ?? []).includes(Number(item.itemId))),
+  )
+
+  const matchedItem = candidateItems.find((item) => item.itemName.toLowerCase().includes(normalizedSearch))
+  if (matchedItem) {
+    return { type: 'item', item: matchedItem }
+  }
+
+  if (room?.roomName && room.roomName.toLowerCase().includes(normalizedSearch)) {
+    return { type: 'room', room }
+  }
+
+  return null
+}
+
+/// <summary>
+/// Builds the System conversation-log line for an inspection request. Rooms and items reveal any
+/// items contained within them (room contents, or an item's `contents` if it canHoldItems).
+/// Character inspections describe the character but never reveal items they are holding.
+/// </summary>
+export function buildInspectionResultLine(target, items) {
+  if (!target) {
+    return { speaker: 'System', text: "You don't see that here." }
+  }
+
+  if (target.type === 'room') {
+    const roomItems = getItemsInRoom(items, target.room.roomId)
+    const description = target.room.roomDescription || target.room.roomName || 'You look around.'
+    const itemsText =
+      roomItems.length > 0
+        ? `You see: ${roomItems.map((item) => item.itemName).join(', ')}.`
+        : 'You see nothing of note lying around.'
+    return { speaker: 'System', text: `${description}\n${itemsText}` }
+  }
+
+  if (target.type === 'character') {
+    const description = target.character.characterDescription || `You see ${target.character.characterName}.`
+    return { speaker: 'System', text: description }
+  }
+
+  if (target.type === 'item') {
+    const description = target.item.itemDescription || `You examine the ${target.item.itemName}.`
+    if (!target.item.canHoldItems) {
+      return { speaker: 'System', text: description }
+    }
+
+    const containedItems = getContainedItemsForItem(target.item, items)
+    const containedText =
+      containedItems.length > 0
+        ? `Inside, you find: ${containedItems.map((item) => item.itemName).join(', ')}.`
+        : 'It appears to be empty.'
+    return { speaker: 'System', text: `${description}\n${containedText}` }
+  }
+
+  return { speaker: 'System', text: "You don't see that here." }
 }
 
 export function getValidExits(room) {
@@ -543,6 +715,142 @@ const PLAYER_COMMAND_ALIASES = {
   i: 'inventory',
   goal: 'goal',
   g: 'goal',
+  accuse: 'accuse',
+}
+
+const NATURAL_ACCUSE_PATTERN = /\b(i\s+accuse|accuse|it\s+was)\b/i
+const ACCUSE_CONFIRM_PATTERN = /\b(yes|yeah|yep|confirm|i\s*'?m\s*sure|do it)\b/i
+const ACCUSE_DECLINE_PATTERN = /\b(no|nah|never mind|nevermind|cancel|wait)\b/i
+
+/// <summary>
+/// Detects a player message naming a present character as the culprit, either via the explicit
+/// `/accuse CharacterName` command or a natural-language equivalent like "I accuse Karen",
+/// "accuse Karen", or "It was Karen" (GONF-014 Business Rule 6). The player is not required to
+/// type a character's full display name (for example, "Mrs. Karen Higgiebottom") - matching a
+/// single distinctive name word (first name, last name, or title-free portion) is enough, as
+/// long as it uniquely identifies exactly one present character.
+/// </summary>
+export function detectAccusationRequest(playerMessage, charactersInRoom) {
+  if (!playerMessage || !Array.isArray(charactersInRoom) || charactersInRoom.length === 0) {
+    return null
+  }
+
+  const slashMatch = /^\/accuse\b\s*(.*)$/i.exec(playerMessage.trim())
+  const isNaturalLanguageAccusation = !slashMatch && NATURAL_ACCUSE_PATTERN.test(playerMessage)
+
+  if (!slashMatch && !isNaturalLanguageAccusation) {
+    return null
+  }
+
+  const searchText = slashMatch ? slashMatch[1] : playerMessage
+  const lowerSearchText = searchText.toLowerCase()
+
+  const eligibleCharacters = charactersInRoom.filter((character) => character?.characterName)
+
+  // First, prefer a full-name match (handles cases where two characters share a first name).
+  const fullNameMatches = eligibleCharacters.filter((character) =>
+    lowerSearchText.includes(character.characterName.toLowerCase()),
+  )
+
+  if (fullNameMatches.length === 1) {
+    return fullNameMatches[0]
+  }
+
+  if (fullNameMatches.length > 1) {
+    return null
+  }
+
+  // Fall back to matching any individual whole word from the character's name (skipping common
+  // titles like "Mr."/"Mrs."/"Dr." so "accuse Karen" matches "Mrs. Karen Higgiebottom").
+  const nameTitleWords = new Set(['mr', 'mrs', 'ms', 'miss', 'dr', 'sir', 'lady', 'lord'])
+  const partialMatches = eligibleCharacters.filter((character) => {
+    const nameWords = character.characterName
+      .toLowerCase()
+      .split(/[^a-z0-9']+/i)
+      .filter((word) => word.length > 0 && !nameTitleWords.has(word))
+
+    return nameWords.some((word) => new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(lowerSearchText))
+  })
+
+  return partialMatches.length === 1 ? partialMatches[0] : null
+}
+
+export function isAccusationConfirmation(playerMessage) {
+  return Boolean(playerMessage) && ACCUSE_CONFIRM_PATTERN.test(playerMessage) && !ACCUSE_DECLINE_PATTERN.test(playerMessage)
+}
+
+export function isAccusationDecline(playerMessage) {
+  return Boolean(playerMessage) && ACCUSE_DECLINE_PATTERN.test(playerMessage)
+}
+
+export function buildAccusationConfirmationLine(accusedCharacterName) {
+  return {
+    speaker: 'System',
+    text: `Are you sure you want to accuse ${accusedCharacterName}? If you are wrong, it's game over. (yes/no)`,
+  }
+}
+
+export function buildAccusationCancelledLine() {
+  return {
+    speaker: 'System',
+    text: 'Accusation cancelled.',
+  }
+}
+
+export function buildAccusationCorrectLine(accusedCharacterName) {
+  return {
+    speaker: 'System',
+    text: `You accuse ${accusedCharacterName}. You were right!`,
+  }
+}
+
+// GONF-015: a small pool of absurd, humorous confession-rant templates. Each is a function of
+// (characterName, motive) so the guilty character's rant references their real motive text while
+// still sounding a little unhinged/comedic rather than a flat, serious confession.
+const CONFESSION_RANT_TEMPLATES = [
+  (name, motive) =>
+    `FINE! FINE! It was me, ${name}, all along! You want to know why?! It's because of ${motive}! ` +
+    `I lay awake every night rehearsing this exact confession in the mirror, and NOBODY appreciated the theatrics until now. Do you feel powerful? I hope you feel powerful.`,
+  (name, motive) =>
+    `Alright, alright, put the accusing finger down! Yes, I, ${name}, did it - and it was all because of ${motive}! ` +
+    `I even drew up a diagram. There were sticky notes involved. Nobody reads the sticky notes, and that is a tragedy far greater than my crime.`,
+  (name, motive) =>
+    `${name} throws their hands up dramatically. "You got me! It was ${motive} that pushed me over the edge, and honestly? ` +
+    `I regret NOTHING except the part where I left obvious clues everywhere like some kind of amateur. Never again."`,
+  (name, motive) =>
+    `Okay, okay, ${name} snaps! "It was me! All because of ${motive}! I practiced an evil laugh for WEEKS for this moment and you're just standing there. ` +
+    `Could someone at least gasp? This is the least dramatic unmasking I've ever been part of."`,
+]
+
+/// <summary>
+/// Builds the guilty character's absurd, humorous confession-rant lines (GONF-015) once the
+/// player has correctly accused them, using the hidden case file's motive text so the rant
+/// explains their real reasoning for the crime, before the player proceeds to the win screen.
+/// </summary>
+export function buildGuiltyConfessionLines(accusedCharacterName, motive) {
+  const safeMotive = motive || 'reasons they refuse to fully explain'
+  const templateIndex = Math.abs(hashString(`${accusedCharacterName}:${safeMotive}`)) % CONFESSION_RANT_TEMPLATES.length
+  const rantText = CONFESSION_RANT_TEMPLATES[templateIndex](accusedCharacterName, safeMotive)
+
+  return [
+    { speaker: accusedCharacterName, text: rantText },
+    { speaker: 'System', text: 'Press Enter to continue...' },
+  ]
+}
+
+function hashString(text) {
+  let hash = 0
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) | 0
+  }
+  return hash
+}
+
+export function buildAccusationIncorrectLine(accusedCharacterName) {
+  return {
+    speaker: 'System',
+    text: `You accuse ${accusedCharacterName}. You were wrong. GAME OVER.`,
+  }
 }
 
 /// <summary>
@@ -573,6 +881,8 @@ export function buildHelpCommandLine() {
       '/help - show this list',
       '/inventory (or /inv, /i) - list items you are carrying',
       '/goal (or /g) - list the criteria needed to win, and which are already complete',
+      '/look, /examine, /inspect [target] - inspect the room, an item, or a character',
+      '/accuse CharacterName - accuse a character of the mystery (you will be asked to confirm)',
     ].join('\n'),
   }
 }
@@ -702,13 +1012,37 @@ function isArriveCriterionMet(criterion, heldSet, presentSet, currentRoomId) {
   return itemsSatisfied && companionsSatisfied
 }
 
+// Words that tend to appear in a mystery-style goal premise (GONF-013/014) but not in ordinary
+// speak/give/reach/hold goal text. Used only as a fallback display heuristic for the /goal
+// command when no criteria could be derived; it never affects mystery generation or dialogue.
+const MYSTERY_GOAL_KEYWORDS = /\b(mystery|clue|clues|whodunit|guilty|culprit|accuse|accusation|suspect|devious|ruined|evidence)\b/i
+
+/// <summary>
+/// Heuristically detects whether goalText reads as a mystery premise rather than an ordinary
+/// checklist-style goal. This is a display-only heuristic for the /goal command fallback.
+/// </summary>
+function isMysteryGoalText(goalText) {
+  return typeof goalText === 'string' && MYSTERY_GOAL_KEYWORDS.test(goalText)
+}
+
 /// <summary>
 /// Builds the /goal (or /g) command output: a checklist of every derived win-condition criterion
 /// with its current complete/incomplete status, so the player can see exactly what remains.
-/// Returns a friendly message when the Gonf has no (parseable) Goal text at all.
+/// Returns a friendly message when the Gonf has no (parseable) Goal text at all. When the goal
+/// text itself reads as a mystery premise (GONF-013/014) rather than a checklist of ordinary
+/// speak/give/reach-style criteria, the raw goal text is shown along with an accusation hint
+/// instead of the generic "no defined win criteria" fallback, since mystery win/loss is resolved
+/// via accusation rather than derived criteria.
 /// </summary>
-export function buildGoalCommandLine(criteria, spokenCharacterIds, completedGiveTransfers, visitedRoomIds, currentPlayerItemIds, presentCharacterIds, currentRoomId, everFollowedCharacterIds) {
+export function buildGoalCommandLine(criteria, spokenCharacterIds, completedGiveTransfers, visitedRoomIds, currentPlayerItemIds, presentCharacterIds, currentRoomId, everFollowedCharacterIds, goalText) {
   if (!Array.isArray(criteria) || criteria.length === 0) {
+    if (isMysteryGoalText(goalText)) {
+      return {
+        speaker: 'System',
+        text: [`Goal: ${goalText.trim()}`, '', 'When you know who is responsible, say something like "accuse <character>" to make your final accusation.'].join('\n'),
+      }
+    }
+
     return {
       speaker: 'System',
       text: 'Goal: this Gonf has no defined win criteria.',

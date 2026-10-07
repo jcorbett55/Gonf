@@ -24,6 +24,8 @@ app.MapRoomImageEndpoints();
 app.MapCharacterImageEndpoints();
 app.MapItemImageEndpoints();
 app.MapPlayerSaveStateEndpoints();
+app.MapMysteryCaseFileEndpoints();
+app.MapMysteryAccusationEndpoints();
 app.MapConversationEndpoints();
 app.MapItemTransferEndpoints();
 

@@ -59,6 +59,25 @@
   margin: 0;
 }
 
+.gp-lose-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 10, 20, 0.92);
+  z-index: 1000;
+}
+
+.gp-lose-overlay-text {
+  font-size: 4rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: #ff5c5c;
+  text-shadow: 0 0 24px rgba(255, 92, 92, 0.6);
+  margin: 0;
+}
+
 .gp-room-image-frame {
   position: relative;
   border-radius: 12px;

@@ -34,13 +34,31 @@ import {
   buildUnknownCommandLine,
   deriveGoalCriteria,
   isGoalComplete,
+  detectAccusationRequest,
+  isAccusationConfirmation,
+  isAccusationDecline,
+  buildAccusationConfirmationLine,
+  buildAccusationCancelledLine,
+  buildAccusationCorrectLine,
+  buildAccusationIncorrectLine,
+  buildGuiltyConfessionLines,
+  parseInspectionRequest,
+  resolveInspectionTarget,
+  buildInspectionResultLine,
+  mergeSynthesizedItems,
 } from './gonf/gonfEngine'
 import { directionLabels } from './gonf/shared'
 import { fetchConversationTurn } from './gonf/conversationClient'
 import { postItemTransfer } from './gonf/itemTransferClient'
+import { postAccusation } from './gonf/accusationClient'
+import { fetchSynthesizedItems } from './gonf/mysteryItemsClient'
 
 const MAX_VISIBLE_ROOM_OVERLAYS = 4
 const MAX_CONVERSATION_MEMORY_ENTRIES = 16
+// GONF-014: the mystery case file is looked up server-side by (gonfName, saveId). This player
+// app does not yet have a save/load-slot UI, so every playthrough of a given Gonf uses this fixed
+// save id, matching the id used by the backend's playstate/casefile test fixtures.
+const DEFAULT_SAVE_ID = 'default'
 const staircaseDirections = new Set(['up', 'down'])
 const SPEAKER_COLOR_HUES = [210, 15, 145, 45, 280, 0, 190, 320]
 
@@ -121,6 +139,9 @@ function GonfPlayerApp() {
   const [visitedRoomIds, setVisitedRoomIds] = useState(() => new Set())
   const [everFollowedCharacterIds, setEverFollowedCharacterIds] = useState(() => new Set())
   const [hasWon, setHasWon] = useState(false)
+  const [hasLost, setHasLost] = useState(false)
+  const [pendingAccusation, setPendingAccusation] = useState(null)
+  const [pendingConfession, setPendingConfession] = useState(false)
   const conversationRoomKeyRef = useRef(null)
   const conversationMemoryRef = useRef([])
   const characterMemoryRef = useRef([])
@@ -139,13 +160,21 @@ function GonfPlayerApp() {
     try {
       const text = await file.text()
       const payload = JSON.parse(text)
-      const parsed = parseLoadedGonf(payload)
+      let parsed = parseLoadedGonf(payload)
       const startingRoomId = resolveStartingRoomId(parsed.rooms)
 
       if (startingRoomId === null) {
         setLoadError('This Gonf file does not contain any rooms to start in.')
         return
       }
+
+      // GONF-013: hydrate any synthesized clue items generated for this playthrough's hidden
+      // mystery case file, so `/look` can reveal them even though they aren't authored items.
+      const synthesizedItems = await fetchSynthesizedItems({
+        gonfName: parsed.gonfName,
+        saveId: DEFAULT_SAVE_ID,
+      }).catch(() => [])
+      parsed = mergeSynthesizedItems(parsed, synthesizedItems)
 
       setGonfData(parsed)
       setCurrentRoomId(startingRoomId)
@@ -158,6 +187,9 @@ function GonfPlayerApp() {
       setVisitedRoomIds(new Set([startingRoomId]))
       setEverFollowedCharacterIds(new Set())
       setHasWon(false)
+      setHasLost(false)
+      setPendingAccusation(null)
+      setPendingConfession(false)
       conversationMemoryRef.current = []
       characterMemoryRef.current = []
     } catch (error) {
@@ -173,6 +205,9 @@ function GonfPlayerApp() {
       setVisitedRoomIds(new Set())
       setEverFollowedCharacterIds(new Set())
       setHasWon(false)
+      setHasLost(false)
+      setPendingAccusation(null)
+      setPendingConfession(false)
       conversationMemoryRef.current = []
       characterMemoryRef.current = []
     }
@@ -352,6 +387,10 @@ function GonfPlayerApp() {
       playerMessage: null,
       previousLines: conversationMemoryRef.current,
       characterMemory: characterMemoryRef.current,
+      gonfName: gonfData.gonfName,
+      saveId: DEFAULT_SAVE_ID,
+      playerHeldItemIds: playerItemIds,
+      goal: gonfData.goal,
     })
       .then(({ lines, updatedCharacterMemory }) => {
         if (cancelled) {
@@ -384,12 +423,84 @@ function GonfPlayerApp() {
     event.preventDefault()
 
     const trimmedMessage = conversationDraft.trim()
-    if (!trimmedMessage || !currentRoom || isConversationLoading || hasWon) {
+    if (!currentRoom || isConversationLoading || hasWon || hasLost) {
+      return
+    }
+
+    if (pendingConfession) {
+      setConversationDraft('')
+      setPendingConfession(false)
+      setHasWon(true)
+      return
+    }
+
+    if (!trimmedMessage) {
       return
     }
 
     setConversationDraft('')
     setConversationError('')
+
+    if (pendingAccusation) {
+      const nextLogWithPlayer = [...conversationLog, { speaker: 'Player', text: trimmedMessage }]
+
+      if (isAccusationConfirmation(trimmedMessage)) {
+        const accusedCharacter = pendingAccusation.character
+        setPendingAccusation(null)
+        setConversationLog(nextLogWithPlayer)
+
+        try {
+          const { correct, motive } = await postAccusation({
+            gonfName: gonfData?.gonfName,
+            saveId: DEFAULT_SAVE_ID,
+            accusedCharacterId: accusedCharacter.characterId,
+          })
+
+          if (correct) {
+            const confessionLines = buildGuiltyConfessionLines(accusedCharacter.characterName, motive)
+            setConversationLog([
+              ...nextLogWithPlayer,
+              buildAccusationCorrectLine(accusedCharacter.characterName),
+              ...confessionLines,
+            ])
+            setPendingConfession(true)
+          } else {
+            setConversationLog([...nextLogWithPlayer, buildAccusationIncorrectLine(accusedCharacter.characterName)])
+            setHasLost(true)
+          }
+        } catch (error) {
+          setConversationError(error?.message ?? 'Could not resolve the accusation.')
+        }
+      } else if (isAccusationDecline(trimmedMessage)) {
+        setConversationLog([...nextLogWithPlayer, buildAccusationCancelledLine()])
+        setPendingAccusation(null)
+      } else {
+        setConversationLog(nextLogWithPlayer)
+      }
+
+      return
+    }
+
+    const accusedCharacter = detectAccusationRequest(trimmedMessage, charactersInRoom)
+    if (accusedCharacter) {
+      const nextLogWithPlayer = [...conversationLog, { speaker: 'Player', text: trimmedMessage }]
+      setConversationLog([...nextLogWithPlayer, buildAccusationConfirmationLine(accusedCharacter.characterName)])
+      setPendingAccusation({ character: accusedCharacter })
+      return
+    }
+
+    const inspectionSearchText = parseInspectionRequest(trimmedMessage)
+    if (inspectionSearchText !== null) {
+      const nextLogWithPlayer = [...conversationLog, { speaker: 'Player', text: trimmedMessage }]
+      const inspectionTarget = resolveInspectionTarget(inspectionSearchText, {
+        charactersInRoom,
+        items: gonfData?.items ?? [],
+        room: currentRoom,
+        playerItemIds,
+      })
+      setConversationLog([...nextLogWithPlayer, buildInspectionResultLine(inspectionTarget, gonfData?.items ?? [])])
+      return
+    }
 
     const playerCommand = parsePlayerCommand(trimmedMessage)
     if (playerCommand) {
@@ -411,6 +522,7 @@ function GonfPlayerApp() {
             presentCharacterIds,
             currentRoomId,
             everFollowedCharacterIds,
+            gonfData?.goal,
           ),
         ])
       } else {
@@ -594,6 +706,10 @@ function GonfPlayerApp() {
         playerMessage: trimmedMessage,
         previousLines: conversationMemoryRef.current,
         characterMemory: characterMemoryRef.current,
+        gonfName: gonfData.gonfName,
+        saveId: DEFAULT_SAVE_ID,
+        playerHeldItemIds: playerItemIds,
+        goal: gonfData.goal,
       })
 
       const newEntries = lines.map((line) => ({ speaker: line.speaker, text: line.text }))
@@ -803,11 +919,17 @@ function GonfPlayerApp() {
             className="gp-conversation-input"
             value={conversationDraft}
             onChange={(event) => setConversationDraft(event.target.value)}
-            placeholder={charactersInRoom.length > 0 ? 'Say something...' : 'Type a command, e.g. /inventory or /help...'}
-            disabled={isConversationLoading || hasWon}
+            placeholder={
+              pendingConfession
+                ? 'Press Enter to continue...'
+                : charactersInRoom.length > 0
+                  ? 'Say something...'
+                  : 'Type a command, e.g. /inventory or /help...'
+            }
+            disabled={isConversationLoading || hasWon || hasLost}
           />
-          <button type="submit" className="gp-conversation-send" disabled={isConversationLoading || hasWon || !conversationDraft.trim()}>
-            {isConversationLoading ? 'Waiting...' : 'Send'}
+          <button type="submit" className="gp-conversation-send" disabled={isConversationLoading || hasWon || hasLost || (!pendingConfession && !conversationDraft.trim())}>
+            {isConversationLoading ? 'Waiting...' : pendingConfession ? 'Continue' : 'Send'}
           </button>
         </form>
       </section>
@@ -815,6 +937,12 @@ function GonfPlayerApp() {
       {hasWon && (
         <div className="gp-win-overlay" role="alertdialog" aria-label="You won">
           <p className="gp-win-overlay-text">YOU WON!</p>
+        </div>
+      )}
+
+      {hasLost && (
+        <div className="gp-lose-overlay" role="alertdialog" aria-label="Game over">
+          <p className="gp-lose-overlay-text">GAME OVER</p>
         </div>
       )}
     </main>
